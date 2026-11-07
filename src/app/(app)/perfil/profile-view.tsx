@@ -117,7 +117,7 @@ export function ProfileView({ name: initialName, email }: { name: string; email:
             )}
           </div>
         </div>
-        {!aiEnabled && <p className="mt-4 text-[12px] text-faint">A IA ainda não está ligada no servidor (falta a GEMINI_API_KEY).</p>}
+        {!aiEnabled && <p className="mt-4 text-[12px] text-faint">Por enquanto a prova usa o app do Gemini no celular (grátis).</p>}
       </section>
 
       <section className="glass mt-4 rounded-[28px] p-5">

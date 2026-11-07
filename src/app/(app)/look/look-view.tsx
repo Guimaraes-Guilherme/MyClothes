@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bookmark, Download, Minus, RotateCcw, Shuffle, SlidersHorizontal, Sparkles, Trash2, X } from "lucide-react";
 import { CATEGORY_INFO, CATEGORY_ORDER, outfitFromIds, type Category, type ItemView, type LookView, type Outfit } from "@/lib/categories";
+import { GeminiShare } from "@/components/gemini-share";
 import { Mannequin } from "@/components/mannequin";
 import { Button, ButtonLink, PageTitle, inputClass } from "@/components/ui";
 import { api, useWardrobe } from "@/components/wardrobe";
@@ -19,7 +20,7 @@ export function LookView() {
   const [pos, setPos] = useState(0);
   const [adjustingRaw, setAdjusting] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [ai, setAi] = useState<{ state: "loading" | "done" | "error"; image?: string; message?: string; lookId?: string } | null>(null);
+  const [ai, setAi] = useState<AiState | null>(null);
   const [showPhoto, setShowPhoto] = useState<Record<string, boolean>>({});
 
   const slides: Slide[] = useMemo(
@@ -97,16 +98,20 @@ export function LookView() {
   async function tryOn() {
     const ids = slide.items.map((i) => i.id);
     const lookId = slide.kind === "saved" ? slide.look.id : undefined;
-    setAi({ state: "loading", lookId });
+    const base = { lookId, items: slide.items };
+    if (!bodyUrl) return setAi({ state: "needBody", ...base });
+    // Sem chave da IA no servidor: vai direto para a prova grátis pelo app do Gemini.
+    if (!aiEnabled) return setAi({ state: "free", ...base });
+    setAi({ state: "loading", ...base });
     try {
       const r = await api<{ image: string }>("/api/provar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ itemIds: ids }),
       });
-      setAi({ state: "done", image: r.image, lookId });
+      setAi({ state: "done", image: r.image, ...base });
     } catch (e) {
-      setAi({ state: "error", message: (e as Error).message, lookId });
+      setAi({ state: "error", message: (e as Error).message, ...base });
     }
   }
 
@@ -286,8 +291,9 @@ export function LookView() {
       {ai && (
         <AiSheet
           state={ai}
-          hasBody={Boolean(bodyUrl)}
-          aiEnabled={aiEnabled}
+          bodyUrl={bodyUrl}
+          onFree={() => setAi({ ...ai, state: "free" })}
+          onResult={(image) => setAi({ ...ai, state: "done", image, fromGemini: true })}
           canSave={ai.lookId ? true : outfitItems.length > 0}
           onClose={() => setAi(null)}
           onRetry={tryOn}
@@ -399,21 +405,36 @@ async function toWebp(dataUrl: string): Promise<Blob> {
   c.width = Math.round(img.naturalWidth * scale);
   c.height = Math.round(img.naturalHeight * scale);
   c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height);
-  return new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error("Não consegui preparar a imagem."))), "image/webp", 0.88));
+  const enc = (type: string) =>
+    new Promise<Blob>((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error("Não consegui preparar a imagem."))), type, 0.88));
+  const webp = await enc("image/webp");
+  // iPhone sem WebP: usa JPEG, que fica bem menor que PNG.
+  return webp.type === "image/webp" ? webp : enc("image/jpeg");
 }
+
+type AiState = {
+  state: "loading" | "done" | "error" | "free" | "needBody";
+  items: ItemView[];
+  image?: string;
+  message?: string;
+  lookId?: string;
+  fromGemini?: boolean;
+};
 
 function AiSheet({
   state,
-  hasBody,
-  aiEnabled,
+  bodyUrl,
+  onFree,
+  onResult,
   canSave,
   onClose,
   onRetry,
   onSave,
 }: {
-  state: { state: "loading" | "done" | "error"; image?: string; message?: string; lookId?: string };
-  hasBody: boolean;
-  aiEnabled: boolean;
+  state: AiState;
+  bodyUrl: string | null;
+  onFree: () => void;
+  onResult: (dataUrl: string) => void;
   canSave: boolean;
   onClose: () => void;
   onRetry: () => void;
@@ -422,21 +443,27 @@ function AiSheet({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (!aiEnabled || !hasBody) {
+  if (state.state === "needBody" || !bodyUrl) {
     return (
       <Sheet onClose={onClose} label="Provar com IA">
         <Sparkles className="h-6 w-6" />
         <h3 className="mt-3 text-xl font-bold tracking-tight">Falta um passo para provar com IA</h3>
         <p className="mt-2 text-sm text-muted">
-          {!hasBody
-            ? "Adicione no Perfil uma foto sua de corpo inteiro, de frente e com boa luz. A IA veste as peças nessa foto."
-            : "A chave da IA ainda não foi configurada no servidor (GEMINI_API_KEY). Veja o README do projeto."}
+          Adicione no Perfil uma foto sua de corpo inteiro, de frente e com boa luz. A IA veste as peças nessa foto.
         </p>
-        {!hasBody && (
-          <ButtonLink href="/perfil#foto-corpo" className="mt-5 h-12 w-full">
-            Adicionar minha foto
-          </ButtonLink>
-        )}
+        <ButtonLink href="/perfil#foto-corpo" className="mt-5 h-12 w-full">
+          Adicionar minha foto
+        </ButtonLink>
+      </Sheet>
+    );
+  }
+
+  if (state.state === "free") {
+    return (
+      <Sheet onClose={onClose} label="Provar no app do Gemini">
+        <h3 className="pr-10 text-xl font-bold tracking-tight">Provar no app do Gemini</h3>
+        <p className="mb-5 mt-1 text-sm text-muted">Grátis, usando o app do Gemini no seu celular (tem limite por dia).</p>
+        <GeminiShare items={state.items} bodyUrl={bodyUrl} onResult={onResult} />
       </Sheet>
     );
   }
@@ -465,9 +492,12 @@ function AiSheet({
           <div className="absolute inset-0 grid place-items-center p-6 text-center">
             <div>
               <p className="text-sm font-medium">{state.message}</p>
-              <Button variant="secondary" onClick={onRetry} className="mt-4">
-                Tentar de novo
-              </Button>
+              <div className="mt-4 flex flex-col items-center gap-2">
+                <Button onClick={onFree}>Provar grátis no app do Gemini</Button>
+                <Button variant="ghost" onClick={onRetry}>
+                  Tentar de novo
+                </Button>
+              </div>
             </div>
           </div>
         )}
@@ -495,13 +525,17 @@ function AiSheet({
           <a href={state.image} download="provador-look.png" className="glass grid h-12 w-12 place-items-center rounded-full" aria-label="Baixar foto">
             <Download className="h-4 w-4" />
           </a>
-          <Button variant="secondary" className="h-12 w-12 px-0" onClick={onRetry} aria-label="Gerar de novo">
+          <Button variant="secondary" className="h-12 w-12 px-0" onClick={state.fromGemini ? onFree : onRetry} aria-label="Gerar de novo">
             <RotateCcw className="h-4 w-4" />
           </Button>
         </div>
       )}
       {error && <p className="mt-3 text-sm font-medium">{error}</p>}
-      <p className="mt-3 text-center text-[11px] text-faint">Cada prova usa a IA do Google (alguns centavos).</p>
+      {!state.fromGemini && (
+        <button type="button" onClick={onFree} className="mx-auto mt-3 block text-center text-[12px] font-medium text-muted underline underline-offset-4">
+          Provar grátis no app do Gemini
+        </button>
+      )}
     </Sheet>
   );
 }

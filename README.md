@@ -7,6 +7,7 @@ Seu armário no celular. Fotografe suas roupas, veja tudo numa vitrine de pratel
 - **Armário:** cada peça numa prateleira de acrílico, com filtro por tipo e favoritas. Tocando, a peça cresce no centro sobre a prateleira acesa, com as vizinhas desfocadas dos lados (deslize para passar). O **+** veste a peça no manequim.
 - **Nova peça:** tire a foto ou escolha da galeria. O fundo é removido **no próprio celular** (o modelo baixa uns 40 MB na primeira vez e fica guardado), a peça é recortada rente e vai para a prateleira. Escolha o tipo, nome e cor.
 - **Look:** o manequim vestido no centro e os looks salvos desfocados dos lados, como uma passarela. Embaixo, a lista das peças. Dá para ajustar tamanho e posição de cada peça, tirar peças, sortear um look ("Surpreenda-me") e salvar.
+- **Provar no app do Gemini (grátis):** sem chave de IA no servidor (ou quando a cota acaba), o Provador prepara sua foto + as peças, copia o pedido pronto e abre o compartilhamento do celular para o app Gemini. A foto gerada volta para o look pelo botão "Já tenho a foto do Gemini".
 - **Provar com IA:** manda sua foto de corpo inteiro + as peças para o modelo de imagem do Google (Gemini) e devolve uma foto realista sua com o look. A foto pode ser guardada junto do look.
 - **Perfil:** seu rosto na cabeça do manequim (opcional, com enquadramento), foto de corpo para a IA e conta.
 - **App no celular (PWA):** instala na tela inicial, abre em tela cheia e guarda as fotos das roupas no aparelho.
