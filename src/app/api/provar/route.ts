@@ -75,7 +75,16 @@ export const POST = authed(async (req, user) => {
   const data = (await res.json().catch(() => null)) as GeminiResponse | null;
   if (!res.ok) {
     console.error("Gemini", res.status, JSON.stringify(data)?.slice(0, 500));
-    if (res.status === 429) return fail(429, "Limite da IA atingido no momento. Tente de novo daqui a pouco.");
+    if (res.status === 429) {
+      // "limit: 0" = a chave não tem cota grátis para este modelo (precisa de faturamento).
+      const noFree = /limit:\s*0\b|free_tier|FreeTier/i.test(JSON.stringify(data ?? ""));
+      return fail(
+        429,
+        noFree
+          ? "O Google não liberou cota grátis para essa IA nesta chave. Use a prova grátis pelo app do Gemini."
+          : "A cota da IA acabou por agora. Tente mais tarde ou use a prova grátis pelo app do Gemini.",
+      );
+    }
     if (res.status === 400 || res.status === 403) return fail(502, "A chave da IA foi recusada. Confira a GEMINI_API_KEY e o faturamento no Google AI Studio.");
     return fail(502, "A IA não conseguiu gerar o look agora. Tente de novo.");
   }
