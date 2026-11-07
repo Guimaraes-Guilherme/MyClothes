@@ -1,0 +1,164 @@
+@import "tailwindcss";
+
+/*
+ * Visual do Provador: fundo branco de estúdio, superfícies de vidro fosco e texto preto.
+ * Destaques e botões principais são pretos (#101010), como uma vitrine.
+ */
+:root {
+  --bg: #f4f4f7;
+  --fg: #101010;
+  --muted: rgb(16 16 16 / 0.56);
+  --faint: rgb(16 16 16 / 0.36);
+  --line: rgb(16 16 16 / 0.08);
+  --surface: rgb(16 16 16 / 0.04);
+  --surface-2: rgb(16 16 16 / 0.07);
+  --glass: rgb(255 255 255 / 0.55);
+  --glass-strong: rgb(255 255 255 / 0.78);
+  --glass-edge: rgb(255 255 255 / 0.85);
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-line: var(--line);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+}
+
+html {
+  background: var(--bg);
+  color: var(--fg);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: var(--font-sans);
+  min-height: 100dvh;
+  /* Estúdio: luz branca no centro e um leve tom lilás nas bordas. */
+  background:
+    radial-gradient(120% 60% at 50% 0%, #ffffff 0%, rgb(255 255 255 / 0) 70%),
+    radial-gradient(80% 50% at 100% 100%, rgb(228 226 244 / 0.9) 0%, rgb(228 226 244 / 0) 70%),
+    radial-gradient(70% 45% at 0% 70%, rgb(236 238 246 / 0.9) 0%, rgb(236 238 246 / 0) 70%),
+    var(--bg);
+  background-attachment: fixed;
+}
+
+::selection {
+  background: var(--fg);
+  color: #fff;
+}
+
+:focus-visible {
+  outline: 2px solid var(--fg);
+  outline-offset: 2px;
+}
+
+@utility glass {
+  background: var(--glass);
+  border: 1px solid var(--glass-edge);
+  backdrop-filter: blur(22px) saturate(1.4);
+  -webkit-backdrop-filter: blur(22px) saturate(1.4);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.9) inset,
+    0 10px 30px -12px rgb(30 30 60 / 0.18);
+}
+
+@utility glass-strong {
+  background: var(--glass-strong);
+  border: 1px solid var(--glass-edge);
+  backdrop-filter: blur(26px) saturate(1.5);
+  -webkit-backdrop-filter: blur(26px) saturate(1.5);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.95) inset,
+    0 18px 40px -16px rgb(30 30 60 / 0.25);
+}
+
+/* Prateleira de acrílico onde as peças ficam "apoiadas". */
+@utility shelf {
+  height: 12px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.95) 0%, rgb(255 255 255 / 0.45) 45%, rgb(214 214 228 / 0.55) 100%);
+  border: 1px solid rgb(255 255 255 / 0.9);
+  box-shadow:
+    0 1px 0 rgb(255 255 255) inset,
+    0 14px 18px -10px rgb(40 40 80 / 0.28),
+    0 2px 4px rgb(40 40 80 / 0.08);
+  transform: perspective(300px) rotateX(38deg);
+}
+
+/* Prateleira acesa: a peça escolhida ganha luz por baixo. */
+@utility shelf-lit {
+  height: 14px;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #ffffff 0%, rgb(255 255 255 / 0.75) 50%, rgb(232 230 255 / 0.9) 100%);
+  border: 1px solid #fff;
+  box-shadow:
+    0 0 24px 6px rgb(255 255 255 / 0.95),
+    0 18px 50px 6px rgb(170 160 255 / 0.45),
+    0 2px 6px rgb(40 40 80 / 0.12);
+  transform: perspective(300px) rotateX(38deg);
+}
+
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@utility snap-x-mandatory {
+  scroll-snap-type: x mandatory;
+}
+
+/* Sombra suave das peças "flutuando" na prateleira. */
+.item-shadow {
+  filter: drop-shadow(0 10px 10px rgb(30 30 60 / 0.16)) drop-shadow(0 2px 2px rgb(30 30 60 / 0.1));
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+.animate-fade-up {
+  animation: fade-up 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+.animate-pop-in {
+  animation: pop-in 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+.animate-shimmer {
+  background: linear-gradient(90deg, rgb(255 255 255 / 0) 0%, rgb(255 255 255 / 0.85) 50%, rgb(255 255 255 / 0) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
