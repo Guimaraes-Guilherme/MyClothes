@@ -75,6 +75,9 @@ export const items = pgTable(
     favorite: boolean("favorite").notNull().default(false),
     image: bytea("image").notNull(),
     imageType: text("image_type").notNull(),
+    /** Versão menor da foto, para a vitrine e o manequim carregarem rápido. A original fica para o zoom e a IA. */
+    thumb: bytea("thumb"),
+    thumbType: text("thumb_type"),
     width: smallint("width").notNull(),
     height: smallint("height").notNull(),
     /** Ajuste fino no manequim: tamanho (1 = padrão) e deslocamento em % da área da peça. */

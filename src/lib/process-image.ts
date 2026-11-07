@@ -9,7 +9,7 @@
 
 export type Processed = { blob: Blob; width: number; height: number; url: string };
 
-const MAX_UPLOAD = 1400 * 1024;
+const MAX_UPLOAD = 2800 * 1024;
 
 async function bitmapFrom(file: Blob) {
   try {
@@ -40,7 +40,7 @@ function toBlob(c: HTMLCanvasElement, type: string, quality?: number) {
 
 /** WebP com transparência quando o navegador sabe gerar; senão PNG (iPhone antigo). Garante o limite de tamanho. */
 async function exportImage(c: HTMLCanvasElement, transparent: boolean): Promise<Blob> {
-  let blob = await toBlob(c, "image/webp", 0.9);
+  let blob = await toBlob(c, "image/webp", 0.92);
   if (blob.type !== "image/webp") blob = await toBlob(c, transparent ? "image/png" : "image/jpeg", 0.88);
   let cur = c;
   while (blob.size > MAX_UPLOAD && cur.width > 300) {
@@ -80,7 +80,7 @@ export async function removeBg(input: Blob, onProgress?: (label: string, pct: nu
 }
 
 /** Corta as bordas transparentes, reduz e exporta. Devolve também as dimensões finais. */
-export async function finalize(input: Blob | HTMLCanvasElement, transparent: boolean, max = 900): Promise<Processed> {
+export async function finalize(input: Blob | HTMLCanvasElement, transparent: boolean, max = 1800): Promise<Processed> {
   let src: HTMLCanvasElement;
   if (input instanceof HTMLCanvasElement) src = input;
   else {
@@ -149,6 +149,20 @@ export async function cropSquare(file: Blob, zoom: number, cx: number, cy: numbe
 export async function prepareBodyPhoto(file: Blob): Promise<Blob> {
   const c = await downscale(file, 1280);
   let blob = await toBlob(c, "image/jpeg", 0.88);
-  if (blob.size > MAX_UPLOAD) blob = await toBlob(c, "image/jpeg", 0.75);
+  if (blob.size > 1400 * 1024) blob = await toBlob(c, "image/jpeg", 0.75);
+  return blob;
+}
+
+/** Miniatura leve da peça já tratada (vitrine e manequim). */
+export async function thumbnail(full: Processed, transparent: boolean): Promise<Blob> {
+  const bmp = await bitmapFrom(full.blob);
+  const s = Math.min(1, 640 / Math.max(bmp.width, bmp.height));
+  const c = canvas(Math.max(1, Math.round(bmp.width * s)), Math.max(1, Math.round(bmp.height * s)));
+  const ctx = c.getContext("2d")!;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(bmp, 0, 0, c.width, c.height);
+  bmp.close?.();
+  let blob = await toBlob(c, "image/webp", 0.85);
+  if (blob.type !== "image/webp") blob = await toBlob(c, transparent ? "image/png" : "image/jpeg", 0.85);
   return blob;
 }

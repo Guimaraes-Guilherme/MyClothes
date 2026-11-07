@@ -25,7 +25,7 @@ export async function listItems(userId: string): Promise<ItemView[]> {
     .from(items)
     .where(eq(items.userId, userId))
     .orderBy(desc(items.favorite), asc(items.createdAt));
-  return rows.map(({ updatedAt, ...r }) => ({ ...r, url: itemUrl(r.id, updatedAt) }));
+  return rows.map(({ updatedAt, ...r }) => ({ ...r, url: itemUrl(r.id, updatedAt), fullUrl: `${itemUrl(r.id, updatedAt)}&full=1` }));
 }
 
 export async function listLooks(userId: string): Promise<LookView[]> {

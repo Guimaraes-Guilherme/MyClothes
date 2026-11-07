@@ -3,9 +3,10 @@
 import clsx from "clsx";
 import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, Pencil, Plus, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Pencil, Plus, X, ZoomIn } from "lucide-react";
 import { CATEGORY_INFO, colorInfo, type ItemView } from "@/lib/categories";
 import { useWardrobe } from "./wardrobe";
+import { ZoomView } from "./zoom-view";
 
 /**
  * Vista de perto: a peça escolhida cresce no centro, sobre a prateleira acesa,
@@ -15,6 +16,7 @@ export function ItemViewer({ list, start, onClose }: { list: ItemView[]; start: 
   const { outfit, toggle } = useWardrobe();
   const track = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState(start);
+  const [zoom, setZoom] = useState(false);
   const active = list[Math.min(list.length - 1, Math.max(0, Math.round(pos)))];
 
   const slideWidth = () => (track.current?.firstElementChild as HTMLElement | null)?.offsetWidth ?? 1;
@@ -37,6 +39,7 @@ export function ItemViewer({ list, start, onClose }: { list: ItemView[]; start: 
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const onKey = (e: KeyboardEvent) => {
+      if (zoom) return;
       if (e.key === "Escape") onClose();
       if (e.key === "ArrowRight") go(Math.round(pos) + 1);
       if (e.key === "ArrowLeft") go(Math.round(pos) - 1);
@@ -46,7 +49,7 @@ export function ItemViewer({ list, start, onClose }: { list: ItemView[]; start: 
       document.body.style.overflow = prev;
       window.removeEventListener("keydown", onKey);
     };
-  }, [onClose, go, pos]);
+  }, [onClose, go, pos, zoom]);
 
   if (!active) return null;
   const equipped = outfit[active.category] === active.id;
@@ -83,14 +86,14 @@ export function ItemViewer({ list, start, onClose }: { list: ItemView[]; start: 
             <button
               type="button"
               key={item.id}
-              onClick={() => (i === Math.round(pos) ? null : go(i))}
+              onClick={() => (i === Math.round(pos) ? setZoom(true) : go(i))}
               className="flex w-[64vw] shrink-0 snap-center flex-col items-center justify-end sm:w-[36vw]"
               style={{ transform: `scale(${1 - d * 0.32})`, opacity: 1 - d * 0.4, filter: d > 0.05 ? `blur(${d * 5}px)` : undefined }}
-              aria-label={item.name}
+              aria-label={i === Math.round(pos) ? `Ver ${item.name} de perto` : item.name}
             >
               <div className="relative aspect-square w-full">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={item.url} alt="" draggable={false} className="item-shadow absolute inset-0 h-full w-full object-contain object-bottom" />
+                <img src={Math.abs(i - pos) < 1.5 ? item.fullUrl : item.url} alt="" draggable={false} className="item-shadow absolute inset-0 h-full w-full object-contain object-bottom" />
               </div>
               <div className={clsx("mt-1 w-[92%]", i === Math.round(pos) ? "shelf-lit" : "shelf")} />
             </button>
@@ -105,7 +108,10 @@ export function ItemViewer({ list, start, onClose }: { list: ItemView[]; start: 
         <ChevronRight className="h-5 w-5" />
       </button>
 
-      <div className="relative z-10 mx-auto w-full max-w-md px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+      <div className="relative z-10 mx-auto flex w-full max-w-md flex-col px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+        <button type="button" onClick={() => setZoom(true)} className="glass mx-auto mb-3 flex h-9 items-center gap-1.5 rounded-full px-4 text-[12px] font-semibold">
+          <ZoomIn className="h-4 w-4" /> Ver de perto
+        </button>
         <div className="mb-4 flex items-center justify-center gap-3 text-[11px] font-medium tabular-nums text-faint">
           <span>{String(Math.round(pos) + 1).padStart(2, "0")}</span>
           <span className="relative h-[2px] w-28 overflow-hidden rounded-full bg-fg/10">
@@ -137,6 +143,7 @@ export function ItemViewer({ list, start, onClose }: { list: ItemView[]; start: 
           </Link>
         </div>
       </div>
+      {zoom && <ZoomView src={active.fullUrl} alt={active.name} onClose={() => setZoom(false)} />}
     </div>
   );
 }

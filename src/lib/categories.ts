@@ -62,7 +62,10 @@ export type ItemView = {
   fitScale: number;
   fitX: number;
   fitY: number;
+  /** Versão leve (vitrine e manequim). */
   url: string;
+  /** Foto em resolução máxima (vista de perto e zoom). */
+  fullUrl: string;
 };
 
 export type LookView = {

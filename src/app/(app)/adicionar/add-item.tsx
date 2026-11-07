@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { Camera, Check, ImagePlus, Loader2, Plus, Wand2 } from "lucide-react";
 import { CATEGORY_INFO, CATEGORY_ORDER, COLORS, type Category } from "@/lib/categories";
-import { canvasToPng, downscale, finalize, removeBg, type Processed } from "@/lib/process-image";
+import { canvasToPng, downscale, finalize, removeBg, thumbnail, type Processed } from "@/lib/process-image";
 import { Button, PageTitle, inputClass } from "@/components/ui";
 import { api, useWardrobe } from "@/components/wardrobe";
 
@@ -39,7 +39,7 @@ export function AddItem() {
     const preview = URL.createObjectURL(file);
     setStage({ step: "working", preview, label: "Preparando a foto…", pct: null });
     try {
-      const small = await downscale(file, 1200);
+      const small = await downscale(file, 2000);
       const original = await finalize(small, false);
       let cutout: Processed | null = null;
       let cutoutError: string | undefined;
@@ -71,7 +71,10 @@ export function AddItem() {
     setError(null);
     try {
       const form = new FormData();
-      form.set("image", img.blob, img.blob.type === "image/webp" ? "peca.webp" : img.blob.type === "image/png" ? "peca.png" : "peca.jpg");
+      const ext = (b: Blob) => (b.type === "image/webp" ? "webp" : b.type === "image/png" ? "png" : "jpg");
+      const thumb = await thumbnail(img, img === stage.cutout);
+      form.set("image", img.blob, `peca.${ext(img.blob)}`);
+      form.set("thumb", thumb, `mini.${ext(thumb)}`);
       form.set("name", finalName);
       form.set("category", category);
       form.set("color", color ?? "");
