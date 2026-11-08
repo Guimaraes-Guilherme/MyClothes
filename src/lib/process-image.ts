@@ -171,25 +171,60 @@ export async function thumbnail(full: Processed, transparent: boolean): Promise<
 }
 
 /**
- * Mantém só a maior "mancha" visível do recorte (a peça) e apaga sobras pequenas,
- * como um pé ou um chinelo que apareceram na foto.
+ * Mantém só a peça e apaga sobras (pé, chinelo, linhas do piso).
+ * 1) marca o que é bem visível; 2) "afina" a máscara para cortar ligações finas;
+ * 3) fica com a maior mancha (e outras grandes, como o outro pé de um tênis); 4) devolve a borda.
  */
-function keepLargestBlob(img: ImageData) {
+export function keepLargestBlob(img: ImageData) {
   const { data, width, height } = img;
   const cell = Math.max(2, Math.round(Math.max(width, height) / 300));
   const gw = Math.ceil(width / cell);
   const gh = Math.ceil(height / cell);
-  const solid = new Uint8Array(gw * gh);
+  const cover = new Uint16Array(gw * gh);
+  const total = new Uint16Array(gw * gh);
   for (let y = 0; y < height; y += 2) {
     for (let x = 0; x < width; x += 2) {
-      if (data[(y * width + x) * 4 + 3] > 40) solid[Math.floor(y / cell) * gw + Math.floor(x / cell)] = 1;
+      const g = Math.floor(y / cell) * gw + Math.floor(x / cell);
+      total[g]++;
+      if (data[(y * width + x) * 4 + 3] > 128) cover[g]++;
     }
   }
+  const solid = new Uint8Array(gw * gh);
+  for (let i = 0; i < solid.length; i++) solid[i] = total[i] && cover[i] * 2 >= total[i] ? 1 : 0;
+
+  const R = 3; // células: corta ligações com menos de ~6 células de espessura
+  const morph = (src: Uint8Array, erode: boolean, r: number) => {
+    const out = new Uint8Array(src.length);
+    for (let y = 0; y < gh; y++) {
+      for (let x = 0; x < gw; x++) {
+        let v = erode ? 1 : 0;
+        for (let dy = -r; dy <= r && (erode ? v : !v); dy++) {
+          for (let dx = -r; dx <= r; dx++) {
+            const nx = x + dx;
+            const ny = y + dy;
+            const on = nx >= 0 && ny >= 0 && nx < gw && ny < gh ? src[ny * gw + nx] : 0;
+            if (erode && !on) {
+              v = 0;
+              break;
+            }
+            if (!erode && on) {
+              v = 1;
+              break;
+            }
+          }
+        }
+        out[y * gw + x] = v;
+      }
+    }
+    return out;
+  };
+  const core = morph(solid, true, R);
+
   const label = new Int32Array(gw * gh);
   const sizes = [0];
   const stack: number[] = [];
-  for (let i = 0; i < solid.length; i++) {
-    if (!solid[i] || label[i]) continue;
+  for (let i = 0; i < core.length; i++) {
+    if (!core[i] || label[i]) continue;
     const id = sizes.length;
     let size = 0;
     label[i] = id;
@@ -205,7 +240,7 @@ function keepLargestBlob(img: ImageData) {
           const ny = cy + dy;
           if (nx < 0 || ny < 0 || nx >= gw || ny >= gh) continue;
           const n = ny * gw + nx;
-          if (solid[n] && !label[n]) {
+          if (core[n] && !label[n]) {
             label[n] = id;
             stack.push(n);
           }
@@ -214,16 +249,19 @@ function keepLargestBlob(img: ImageData) {
     }
     sizes.push(size);
   }
-  if (sizes.length < 2) return;
+  if (sizes.length < 2) return; // nada sólido o bastante: deixa como está
   let best = 1;
   for (let k = 2; k < sizes.length; k++) if (sizes[k] > sizes[best]) best = k;
-  // Sobras com mais de 25% do tamanho da peça ficam (ex.: o outro pé de um par de tênis).
-  const keep = new Set<number>();
-  for (let k = 1; k < sizes.length; k++) if (k === best || sizes[k] > sizes[best] * 0.25) keep.add(k);
+  const keepCore = new Uint8Array(gw * gh);
+  for (let i = 0; i < label.length; i++) {
+    const l = label[i];
+    if (l && (l === best || sizes[l] > sizes[best] * 0.25)) keepCore[i] = 1;
+  }
+  // Devolve a espessura da peça (um pouco a mais, para não comer a borda) e só dentro do que já era visível.
+  const grown = morph(keepCore, false, R + 1);
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      const l = label[Math.floor(y / cell) * gw + Math.floor(x / cell)];
-      if (!keep.has(l)) data[(y * width + x) * 4 + 3] = 0;
+      if (!grown[Math.floor(y / cell) * gw + Math.floor(x / cell)]) data[(y * width + x) * 4 + 3] = 0;
     }
   }
 }
