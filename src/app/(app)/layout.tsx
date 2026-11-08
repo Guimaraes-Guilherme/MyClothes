@@ -12,7 +12,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <WardrobeProvider items={items} looks={looks} faceUrl={user.faceUrl} bodyUrl={user.bodyUrl} aiEnabled={Boolean(process.env.GEMINI_API_KEY)}>
       <div className="flex min-h-dvh flex-col">
-        <header className="sticky top-0 z-40 pt-[env(safe-area-inset-top)]">
+        <header className="sticky top-0 z-40 bg-[#f6f6f9]/80 pt-[env(safe-area-inset-top)] backdrop-blur-xl">
           <div className="mx-auto flex h-16 max-w-6xl items-center gap-4 px-4 sm:px-6">
             <Link href="/armario" aria-label="Armário">
               <Logo />

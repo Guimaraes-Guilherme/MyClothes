@@ -22,6 +22,8 @@ export function LookView() {
   const [saving, setSaving] = useState(false);
   const [ai, setAi] = useState<AiState | null>(null);
   const [showPhoto, setShowPhoto] = useState<Record<string, boolean>>({});
+  // Fotos de vitrine (manequim realista) geradas nesta visita, por look.
+  const [vitrine, setVitrine] = useState<Record<string, { state: "loading" | "done" | "error"; image?: string; message?: string }>>({});
 
   const slides: Slide[] = useMemo(
     () => [
@@ -47,6 +49,34 @@ export function LookView() {
 
 
   const adjusting = slide.kind === "current" ? adjustingRaw : null;
+  const keyOf = (sl: Slide) => (sl.kind === "current" ? `atual:${sl.items.map((i) => i.id).sort().join(",")}` : sl.look.id);
+
+  async function attachToLook(lookId: string, dataUrl: string) {
+    const form = new FormData();
+    form.set("aiImage", await toWebp(dataUrl), "look.webp");
+    await api(`/api/looks/${lookId}`, { method: "PATCH", body: form });
+    router.refresh();
+  }
+
+  /** Manequim de loja realista vestindo o look (IA). Sem chave da IA, vai pelo app do Gemini. */
+  async function makeVitrine(sl: Slide) {
+    const key = keyOf(sl);
+    const lookId = sl.kind === "saved" ? sl.look.id : undefined;
+    if (!aiEnabled) return setAi({ state: "free", mode: "mannequin", items: sl.items, lookId, vitrineKey: key });
+    setVitrine((v) => ({ ...v, [key]: { state: "loading" } }));
+    try {
+      const r = await api<{ image: string }>("/api/manequim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemIds: sl.items.map((i) => i.id), body: mannequinBody() }),
+      });
+      setVitrine((v) => ({ ...v, [key]: { state: "done", image: r.image } }));
+      setShowPhoto((p) => ({ ...p, [key]: true }));
+      if (lookId) await attachToLook(lookId, r.image);
+    } catch (e) {
+      setVitrine((v) => ({ ...v, [key]: { state: "error", message: (e as Error).message } }));
+    }
+  }
   const sorted = [...slide.items].sort((a, b) => CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category));
 
   function remove(cat: Category) {
@@ -80,6 +110,8 @@ export function LookView() {
   }
 
   async function saveLook(name: string, aiImage?: Blob) {
+    const current = vitrine[keyOf(slides[0])];
+    if (!aiImage && current?.image) aiImage = await toWebp(current.image);
     const form = new FormData();
     form.set("name", name);
     form.set("itemIds", JSON.stringify(outfitItems.map((i) => i.id)));
@@ -98,7 +130,7 @@ export function LookView() {
   async function tryOn() {
     const ids = slide.items.map((i) => i.id);
     const lookId = slide.kind === "saved" ? slide.look.id : undefined;
-    const base = { lookId, items: slide.items };
+    const base = { lookId, items: slide.items, mode: "tryon" as const };
     if (!bodyUrl) return setAi({ state: "needBody", ...base });
     // Sem chave da IA no servidor: vai direto para a prova grátis pelo app do Gemini.
     if (!aiEnabled) return setAi({ state: "free", ...base });
@@ -137,8 +169,9 @@ export function LookView() {
       >
         {slides.map((s, i) => {
           const d = Math.min(Math.abs(i - pos), 1.6);
-          const key = s.kind === "current" ? "current" : s.look.id;
-          const aiUrl = s.kind === "saved" ? s.look.aiUrl : null;
+          const key = keyOf(s);
+          const v = vitrine[key];
+          const aiUrl = v?.image ?? (s.kind === "saved" ? s.look.aiUrl : null);
           const photo = aiUrl && (showPhoto[key] ?? true);
           return (
             <div
@@ -162,8 +195,32 @@ export function LookView() {
                     onClick={() => setShowPhoto((p) => ({ ...p, [key]: !photo }))}
                     className="glass-strong absolute right-2 top-2 rounded-full px-3 py-1.5 text-[11px] font-semibold"
                   >
-                    {photo ? "Ver manequim" : "Ver foto IA"}
+                    {photo ? "Ver montagem" : "Ver foto"}
                   </button>
+                )}
+                {v?.state === "loading" && (
+                  <div className="absolute inset-0 overflow-hidden rounded-[28px]">
+                    <div className="animate-shimmer absolute inset-0" />
+                    <div className="absolute inset-x-0 bottom-6 text-center">
+                      <p className="glass-strong mx-auto inline-flex items-center gap-2 rounded-full px-4 py-2 text-[12px] font-semibold">
+                        <Sparkles className="h-4 w-4 animate-pulse" /> Vestindo o manequim…
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {i === index && !aiUrl && s.items.length > 0 && v?.state !== "loading" && (
+                  <div className="absolute inset-x-0 bottom-4 flex justify-center">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        makeVitrine(s);
+                      }}
+                      className="flex h-11 items-center gap-2 whitespace-nowrap rounded-full bg-fg px-5 text-[13px] font-semibold text-white shadow-[0_14px_30px_-12px_rgb(0_0_0/0.7)] active:scale-[0.97]"
+                    >
+                      <Sparkles className="h-4 w-4" /> Ver no manequim real
+                    </button>
+                  </div>
                 )}
                 {s.kind === "current" && !s.items.length && (
                   <div className="absolute inset-x-0 top-1/3 flex justify-center">
@@ -182,6 +239,23 @@ export function LookView() {
       {slides.length > 1 && (
         <div className="mx-auto mt-4 h-[3px] w-40 overflow-hidden rounded-full bg-fg/10">
           <div className="h-full rounded-full bg-fg transition-[width] duration-200" style={{ width: `${((index + 1) / slides.length) * 100}%` }} />
+        </div>
+      )}
+
+      {vitrine[keyOf(slide)]?.state === "error" && (
+        <div className="glass mx-auto mt-4 max-w-xl rounded-[22px] p-4 text-center text-sm">
+          <p className="font-medium">{vitrine[keyOf(slide)]?.message}</p>
+          <div className="mt-3 flex justify-center gap-2">
+            <Button
+              className="h-10"
+              onClick={() => setAi({ state: "free", mode: "mannequin", items: slide.items, lookId: slide.kind === "saved" ? slide.look.id : undefined, vitrineKey: keyOf(slide) })}
+            >
+              Fazer pelo app do Gemini
+            </Button>
+            <Button variant="ghost" className="h-10" onClick={() => makeVitrine(slide)}>
+              Tentar de novo
+            </Button>
+          </div>
         </div>
       )}
 
@@ -293,7 +367,15 @@ export function LookView() {
           state={ai}
           bodyUrl={bodyUrl}
           onFree={() => setAi({ ...ai, state: "free" })}
-          onResult={(image) => setAi({ ...ai, state: "done", image, fromGemini: true })}
+          onResult={(image) => {
+            if (ai.mode === "mannequin" && ai.vitrineKey) {
+              const k = ai.vitrineKey;
+              setVitrine((v) => ({ ...v, [k]: { state: "done", image } }));
+              setShowPhoto((p) => ({ ...p, [k]: true }));
+              if (ai.lookId) attachToLook(ai.lookId, image).catch(() => {});
+              setAi(null);
+            } else setAi({ ...ai, state: "done", image, fromGemini: true });
+          }}
           canSave={ai.lookId ? true : outfitItems.length > 0}
           onClose={() => setAi(null)}
           onRetry={tryOn}
@@ -419,7 +501,19 @@ type AiState = {
   message?: string;
   lookId?: string;
   fromGemini?: boolean;
+  /** tryon = você vestindo o look; mannequin = manequim de loja. */
+  mode: "tryon" | "mannequin";
+  vitrineKey?: string;
 };
+
+/** Tipo de manequim escolhido no Perfil (guardado no aparelho). */
+export function mannequinBody(): "masculino" | "feminino" {
+  try {
+    return localStorage.getItem("pv_corpo") === "feminino" ? "feminino" : "masculino";
+  } catch {
+    return "masculino";
+  }
+}
 
 function AiSheet({
   state,
@@ -443,7 +537,7 @@ function AiSheet({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (state.state === "needBody" || !bodyUrl) {
+  if (state.mode === "tryon" && (state.state === "needBody" || !bodyUrl)) {
     return (
       <Sheet onClose={onClose} label="Provar com IA">
         <Sparkles className="h-6 w-6" />
@@ -459,11 +553,12 @@ function AiSheet({
   }
 
   if (state.state === "free") {
+    const mannequin = state.mode === "mannequin";
     return (
-      <Sheet onClose={onClose} label="Provar no app do Gemini">
-        <h3 className="pr-10 text-xl font-bold tracking-tight">Provar no app do Gemini</h3>
+      <Sheet onClose={onClose} label="Usar o app do Gemini">
+        <h3 className="pr-10 text-xl font-bold tracking-tight">{mannequin ? "Manequim real pelo Gemini" : "Provar no app do Gemini"}</h3>
         <p className="mb-5 mt-1 text-sm text-muted">Grátis, usando o app do Gemini no seu celular (tem limite por dia).</p>
-        <GeminiShare items={state.items} bodyUrl={bodyUrl} onResult={onResult} />
+        <GeminiShare mode={state.mode} body={mannequinBody()} items={state.items} bodyUrl={mannequin ? null : bodyUrl} onResult={onResult} />
       </Sheet>
     );
   }

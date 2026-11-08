@@ -10,7 +10,19 @@ import { Button } from "./ui";
  * copia o pedido já escrito e abre o compartilhamento do celular.
  * Depois você traz a foto gerada de volta para guardar no look.
  */
-export function GeminiShare({ items, bodyUrl, onResult }: { items: ItemView[]; bodyUrl: string; onResult: (dataUrl: string) => void }) {
+export function GeminiShare({
+  items,
+  bodyUrl,
+  mode = "tryon",
+  body = "masculino",
+  onResult,
+}: {
+  items: ItemView[];
+  bodyUrl: string | null;
+  mode?: "tryon" | "mannequin";
+  body?: "masculino" | "feminino";
+  onResult: (dataUrl: string) => void;
+}) {
   const [files, setFiles] = useState<File[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
@@ -18,21 +30,35 @@ export function GeminiShare({ items, bodyUrl, onResult }: { items: ItemView[]; b
   const pick = useRef<HTMLInputElement>(null);
 
   const sorted = [...items].sort((a, b) => CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category));
-  const prompt = [
-    "Use a primeira foto (sou eu) e me vista com TODAS as peças de roupa das outras fotos, juntas, como um único look:",
-    ...sorted.map((it, i) => `- Foto ${i + 2}: ${CATEGORY_INFO[it.category].label.toLowerCase()} — ${it.name}`),
-    "Mantenha meu rosto, cabelo, tom de pele, corpo e pose exatamente iguais.",
-    "Reproduza cada peça fielmente: mesma cor, tecido, textura, estampa, logos e comprimento, com caimento e dobras naturais.",
-    "Foto realista de corpo inteiro, da cabeça aos pés, de frente, com fundo branco de estúdio. Gere a imagem.",
-  ].join("\n");
+  const withMe = mode === "tryon" && bodyUrl;
+  const off = withMe ? 2 : 1;
+  const pieces = sorted.map((it, i) => `- Foto ${i + off}: ${CATEGORY_INFO[it.category].label.toLowerCase()} — ${it.name}`);
+  const prompt = (
+    withMe
+      ? [
+          "Use a primeira foto (sou eu) e me vista com TODAS as peças de roupa das outras fotos, juntas, como um único look:",
+          ...pieces,
+          "Nas fotos das peças, use só a roupa: ignore cama, chão, pés e outros objetos.",
+          "Mantenha meu rosto, cabelo, tom de pele, corpo e pose exatamente iguais.",
+          "Reproduza cada peça fielmente: mesma cor, tecido, textura, estampa, logos e comprimento, com caimento e dobras naturais.",
+          "Foto realista de corpo inteiro, da cabeça aos pés, de frente, com fundo branco de estúdio. Gere a imagem.",
+        ]
+      : [
+          `Crie uma foto de catálogo de um manequim de loja ${body}, branco fosco, sem rosto, de corpo inteiro, em pé com uma mão no bolso, vestindo TODAS as peças das fotos, juntas, como um único look:`,
+          ...pieces,
+          "Nas fotos das peças, use só a roupa: ignore cama, chão, pés, pessoas e outros objetos.",
+          "Reproduza cada peça com máxima fidelidade: mesma cor, tecido, textura, lavagem, estampa, logos e comprimento, com caimento, dobras e sombras realistas. Não invente peças; se não houver calçado, use tênis branco liso.",
+          "Fundo de estúdio cinza bem claro, luz suave, sombra leve no chão, enquadramento vertical, sem texto. Gere a imagem.",
+        ]
+  ).join("\n");
 
   async function prepare() {
     setBusy(true);
     setMsg(null);
     try {
       const list = [
-        await toJpegFile(bodyUrl, "1-eu.jpg"),
-        ...(await Promise.all(sorted.map((it, i) => toJpegFile(it.fullUrl, `${i + 2}-${slug(it.name)}.jpg`)))),
+        ...(withMe ? [await toJpegFile(bodyUrl, "1-eu.jpg")] : []),
+        ...(await Promise.all(sorted.map((it, i) => toJpegFile(it.fullUrl, `${i + off}-${slug(it.name)}.jpg`)))),
       ];
       setFiles(list);
     } catch {
@@ -73,7 +99,8 @@ export function GeminiShare({ items, bodyUrl, onResult }: { items: ItemView[]; b
     <div>
       <ol className="space-y-3 text-sm">
         <Step n={1} done={Boolean(files)} title="Preparar as fotos">
-          Sua foto de corpo + {sorted.length} {sorted.length === 1 ? "peça" : "peças"} do look.
+          {withMe ? "Sua foto de corpo + " : ""}
+          {sorted.length} {sorted.length === 1 ? "peça" : "peças"} do look.
         </Step>
         <Step n={2} done={sent} title="Enviar para o Gemini">
           Escolha o app <b>Gemini</b> no compartilhamento. O pedido já fica copiado: é só <b>colar</b> na caixa de texto e enviar.

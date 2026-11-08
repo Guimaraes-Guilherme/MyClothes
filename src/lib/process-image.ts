@@ -93,7 +93,10 @@ export async function finalize(input: Blob | HTMLCanvasElement, transparent: boo
   let box = { x: 0, y: 0, w: src.width, h: src.height };
   if (transparent) {
     const ctx = src.getContext("2d", { willReadFrequently: true })!;
-    const { data, width, height } = ctx.getImageData(0, 0, src.width, src.height);
+    const img = ctx.getImageData(0, 0, src.width, src.height);
+    keepLargestBlob(img);
+    ctx.putImageData(img, 0, 0);
+    const { data, width, height } = img;
     let minX = width,
       minY = height,
       maxX = -1,
@@ -165,4 +168,62 @@ export async function thumbnail(full: Processed, transparent: boolean): Promise<
   let blob = await toBlob(c, "image/webp", 0.85);
   if (blob.type !== "image/webp") blob = await toBlob(c, transparent ? "image/png" : "image/jpeg", 0.85);
   return blob;
+}
+
+/**
+ * Mantém só a maior "mancha" visível do recorte (a peça) e apaga sobras pequenas,
+ * como um pé ou um chinelo que apareceram na foto.
+ */
+function keepLargestBlob(img: ImageData) {
+  const { data, width, height } = img;
+  const cell = Math.max(2, Math.round(Math.max(width, height) / 300));
+  const gw = Math.ceil(width / cell);
+  const gh = Math.ceil(height / cell);
+  const solid = new Uint8Array(gw * gh);
+  for (let y = 0; y < height; y += 2) {
+    for (let x = 0; x < width; x += 2) {
+      if (data[(y * width + x) * 4 + 3] > 40) solid[Math.floor(y / cell) * gw + Math.floor(x / cell)] = 1;
+    }
+  }
+  const label = new Int32Array(gw * gh);
+  const sizes = [0];
+  const stack: number[] = [];
+  for (let i = 0; i < solid.length; i++) {
+    if (!solid[i] || label[i]) continue;
+    const id = sizes.length;
+    let size = 0;
+    label[i] = id;
+    stack.push(i);
+    while (stack.length) {
+      const c = stack.pop()!;
+      size++;
+      const cx = c % gw;
+      const cy = (c - cx) / gw;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = cx + dx;
+          const ny = cy + dy;
+          if (nx < 0 || ny < 0 || nx >= gw || ny >= gh) continue;
+          const n = ny * gw + nx;
+          if (solid[n] && !label[n]) {
+            label[n] = id;
+            stack.push(n);
+          }
+        }
+      }
+    }
+    sizes.push(size);
+  }
+  if (sizes.length < 2) return;
+  let best = 1;
+  for (let k = 2; k < sizes.length; k++) if (sizes[k] > sizes[best]) best = k;
+  // Sobras com mais de 25% do tamanho da peça ficam (ex.: o outro pé de um par de tênis).
+  const keep = new Set<number>();
+  for (let k = 1; k < sizes.length; k++) if (k === best || sizes[k] > sizes[best] * 0.25) keep.add(k);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const l = label[Math.floor(y / cell) * gw + Math.floor(x / cell)];
+      if (!keep.has(l)) data[(y * width + x) * 4 + 3] = 0;
+    }
+  }
 }

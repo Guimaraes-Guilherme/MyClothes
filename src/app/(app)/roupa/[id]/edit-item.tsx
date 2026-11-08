@@ -4,7 +4,8 @@ import clsx from "clsx";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { ArrowLeft, Heart, Trash2 } from "lucide-react";
+import { ArrowLeft, Heart, Loader2, Trash2, Wand2 } from "lucide-react";
+import { canvasToPng, downscale, finalize, removeBg, thumbnail } from "@/lib/process-image";
 import { CATEGORY_INFO, CATEGORY_ORDER, type Category, type ItemView } from "@/lib/categories";
 import { Button, ButtonLink, PageTitle, inputClass } from "@/components/ui";
 import { api, useWardrobe } from "@/components/wardrobe";
@@ -57,6 +58,34 @@ function Form({ item }: { item: ItemView }) {
     }
   }
 
+  const [cutting, setCutting] = useState<string | null>(null);
+
+  /** Roda de novo a remoção de fundo na foto original guardada. */
+  async function recut() {
+    setError(null);
+    setCutting("Preparando…");
+    try {
+      const src = await fetch(item.fullUrl).then((r) => r.blob());
+      const small = await downscale(src, 2000);
+      const png = await removeBg(await canvasToPng(small), (label, pct) => setCutting(pct !== null ? `${label} ${pct}%` : label));
+      setCutting("Recortando a peça…");
+      const cut = await finalize(png, true);
+      const thumb = await thumbnail(cut, true);
+      const ext = (b: Blob) => (b.type === "image/webp" ? "webp" : "png");
+      const form = new FormData();
+      form.set("image", cut.blob, `peca.${ext(cut.blob)}`);
+      form.set("thumb", thumb, `mini.${ext(thumb)}`);
+      form.set("width", String(cut.width));
+      form.set("height", String(cut.height));
+      await api(`/api/roupas/${item.id}/imagem`, { method: "POST", body: form });
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error && e.message.startsWith("Não encontrei") ? e.message : "Não consegui recortar esta foto. Tente fotografar a peça de novo, num fundo liso.");
+    } finally {
+      setCutting(null);
+    }
+  }
+
   async function remove() {
     if (!confirm(`Apagar "${item.name}" do armário?`)) return;
     setBusy(true);
@@ -91,6 +120,14 @@ function Form({ item }: { item: ItemView }) {
           <img src={item.url} alt={item.name} className="item-shadow absolute inset-0 h-full w-full object-contain object-bottom" />
         </div>
         <div className="shelf-lit mx-auto w-[85%] max-w-[280px]" />
+        <button
+          type="button"
+          onClick={recut}
+          disabled={Boolean(cutting) || busy}
+          className="glass mx-auto mt-5 flex h-9 items-center gap-1.5 rounded-full px-4 text-[12px] font-semibold disabled:opacity-60"
+        >
+          {cutting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />} {cutting ?? "Remover o fundo de novo"}
+        </button>
       </div>
 
       <div className="mt-6 space-y-5">

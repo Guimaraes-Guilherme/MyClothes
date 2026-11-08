@@ -2,30 +2,17 @@ import { and, eq, inArray } from "drizzle-orm";
 import { db, items, users } from "@/db";
 import { authed, fail, ok, readJson } from "@/lib/api";
 import { CATEGORY_INFO, CATEGORY_ORDER } from "@/lib/categories";
+import { CATEGORY_EN, generateImage } from "@/lib/gemini";
 import { rateLimit } from "@/lib/rate-limit";
 
 export const maxDuration = 60;
-
-const MODEL = process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image";
-
-const CATEGORY_EN: Record<string, string> = {
-  chapeu: "hat or cap",
-  cima: "top (shirt / t-shirt / sweater)",
-  casaco: "jacket or coat (worn over the top)",
-  vestido: "dress or jumpsuit",
-  baixo: "bottoms (pants / shorts / skirt)",
-  calcado: "shoes",
-  acessorio: "accessory (bag, glasses, jewelry…)",
-};
 
 /**
  * Prova com IA: manda a foto de corpo inteiro + as peças para o modelo de imagem do Google (Gemini)
  * e devolve uma foto realista da pessoa vestindo o look.
  */
 export const POST = authed(async (req, user) => {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) return fail(503, "A prova com IA ainda não foi configurada (falta a GEMINI_API_KEY na Vercel).");
-  if (!rateLimit(`provar:${user.id}`, 30, 60 * 60 * 1000)) return fail(429, "Você fez muitas provas na última hora. Espere um pouco.");
+  if (!rateLimit(`ia:${user.id}`, 30, 60 * 60 * 1000)) return fail(429, "Você fez muitas provas na última hora. Espere um pouco.");
 
   const body = await readJson(req);
   const ids = Array.isArray(body.itemIds) ? body.itemIds.filter((v): v is string => typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v)).slice(0, 8) : [];
@@ -44,7 +31,7 @@ export const POST = authed(async (req, user) => {
   const list = rows.map((r, i) => `Image ${i + 2}: ${CATEGORY_EN[r.category]} — "${r.name}" (${CATEGORY_INFO[r.category].label}).`).join("\n");
   const prompt = [
     "You are a virtual fitting room.",
-    "Image 1 is a photo of a real person. The next images are individual clothing items from this person's own wardrobe, photographed as cutouts:",
+    "Image 1 is a photo of a real person. The next images are individual clothing items from this person's own wardrobe (sometimes photographed lying on a bed or floor: use ONLY the garment, ignore backgrounds, feet and other objects):",
     list,
     "Create a photorealistic full-body photo of the SAME person from image 1 wearing ALL of these items together as one outfit.",
     "Keep the person's face, identity, hairstyle, skin tone, body shape and proportions exactly the same as in image 1.",
@@ -54,48 +41,10 @@ export const POST = authed(async (req, user) => {
     "Background: clean bright white studio with a soft floor shadow. Vertical framing. Output only the image.",
   ].join("\n");
 
-  const parts = [
-    { text: prompt },
-    { inline_data: { mime_type: me.bodyType, data: me.body.toString("base64") } },
-    ...rows.map((r) => ({ inline_data: { mime_type: r.imageType, data: r.image.toString("base64") } })),
-  ];
-
-  let res: Response;
-  try {
-    res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": key },
-      body: JSON.stringify({ contents: [{ role: "user", parts }], generationConfig: { responseModalities: ["IMAGE"] } }),
-      signal: AbortSignal.timeout(55_000),
-    });
-  } catch {
-    return fail(504, "A IA demorou demais para responder. Tente de novo.");
-  }
-
-  const data = (await res.json().catch(() => null)) as GeminiResponse | null;
-  if (!res.ok) {
-    console.error("Gemini", res.status, JSON.stringify(data)?.slice(0, 500));
-    if (res.status === 429) {
-      // "limit: 0" = a chave não tem cota grátis para este modelo (precisa de faturamento).
-      const noFree = /limit:\s*0\b|free_tier|FreeTier/i.test(JSON.stringify(data ?? ""));
-      return fail(
-        429,
-        noFree
-          ? "O Google não liberou cota grátis para essa IA nesta chave. Use a prova grátis pelo app do Gemini."
-          : "A cota da IA acabou por agora. Tente mais tarde ou use a prova grátis pelo app do Gemini.",
-      );
-    }
-    if (res.status === 400 || res.status === 403) return fail(502, "A chave da IA foi recusada. Confira a GEMINI_API_KEY e o faturamento no Google AI Studio.");
-    return fail(502, "A IA não conseguiu gerar o look agora. Tente de novo.");
-  }
-
-  const image = data?.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data)?.inlineData;
-  if (!image?.data) {
-    return fail(502, "A IA não devolveu uma imagem (às vezes ela recusa a foto). Tente outra foto de corpo ou outras peças.");
-  }
-  return ok({ image: `data:${image.mimeType || "image/png"};base64,${image.data}` });
+  const r = await generateImage(prompt, [
+    { mime: me.bodyType, data: me.body.toString("base64") },
+    ...rows.map((x) => ({ mime: x.imageType, data: x.image.toString("base64") })),
+  ]);
+  if (!r.ok) return fail(r.status, r.message);
+  return ok({ image: r.image });
 });
-
-type GeminiResponse = {
-  candidates?: { content?: { parts?: { text?: string; inlineData?: { mimeType?: string; data?: string } }[] } }[];
-};

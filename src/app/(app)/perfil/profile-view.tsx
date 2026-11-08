@@ -62,7 +62,8 @@ export function ProfileView({ name: initialName, email }: { name: string; email:
 
       <section className="glass-strong rounded-[28px] p-5">
         <h2 className="text-lg font-bold tracking-tight">Seu manequim</h2>
-        <p className="mt-1 text-sm text-muted">Coloque seu rosto na cabeça do manequim, se quiser. Fica só para você.</p>
+        <BodyPicker />
+        <p className="mt-1 text-sm text-muted">Tipo de manequim da foto de vitrine e, se quiser, seu rosto na montagem rápida.</p>
         <div className="mt-4 flex items-center gap-5">
           <div className="w-20 shrink-0">
             <Mannequin faceUrl={faceUrl} />
@@ -220,6 +221,32 @@ function FaceCropper({ file, onClose, onSave }: { file: File; onClose: () => voi
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Manequim masculino ou feminino na foto de vitrine (guardado neste aparelho). */
+function BodyPicker() {
+  const [body, setBody] = useState<string>("masculino");
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setBody(localStorage.getItem("pv_corpo") === "feminino" ? "feminino" : "masculino");
+    } catch {}
+  }, []);
+  const pick = (v: string) => {
+    setBody(v);
+    try {
+      localStorage.setItem("pv_corpo", v);
+    } catch {}
+  };
+  return (
+    <div className="mt-3 inline-flex rounded-full bg-white/60 p-1 text-[13px] font-medium">
+      {["masculino", "feminino"].map((v) => (
+        <button key={v} type="button" onClick={() => pick(v)} className={clsx("rounded-full px-4 py-1.5 capitalize transition", body === v ? "bg-fg text-white" : "text-muted")}>
+          {v}
+        </button>
+      ))}
     </div>
   );
 }
