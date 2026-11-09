@@ -57,7 +57,16 @@ export async function generateImage(prompt: string, refs: Blob[], size = { width
       last = { ok: false, status: 429, message: "A cota grátis de hoje da IA acabou. Ela renova todo dia às 21h (horário de Brasília)." };
       continue;
     }
-    last = { ok: false, status: 502, message: "A IA não conseguiu gerar a imagem agora. Tente de novo." };
+    const code = data?.errors?.[0]?.code;
+    const msg = (data?.errors?.[0]?.message ?? "").toLowerCase();
+    if (code === 3040 || /capacity|overloaded|busy|unavailable/.test(msg) || res.status === 503) {
+      last = { ok: false, status: 503, message: "A IA da Cloudflare está sobrecarregada agora. Tente de novo em alguns minutos." };
+      continue;
+    }
+    if (/nsfw|safety|flagged|moderation|content/.test(msg)) {
+      return { ok: false, status: 422, message: `O filtro de conteúdo da IA recusou essas fotos. Tente gerar de novo ou troque alguma peça. (erro ${code ?? res.status})` };
+    }
+    last = { ok: false, status: 502, message: `A IA não conseguiu gerar a imagem agora. Tente de novo. (erro ${code ?? res.status}${msg ? `: ${msg.slice(0, 80)}` : ""})` };
   }
   return last;
 }
