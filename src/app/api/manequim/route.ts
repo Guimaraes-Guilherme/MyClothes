@@ -76,7 +76,8 @@ export const POST = authed(async (req, user) => {
     [`Clothing catalog photo of a plastic ${who} fashion display mannequin in a clothing store: matte white plastic, faceless smooth head, standing straight, full figure from head to shoes, centered.`, ...outfit, scene].join("\n"),
   ];
 
-  const r = await generateImage(prompts, refs);
+  // Primeira rodada (fotos originais): 2 tentativas. Rodadas com fotos borradas: 3, já no modelo leve.
+  const r = await generateImage(prompts, refs, soft ? { maxFlags: 3, cheapFirst: true } : { maxFlags: 2 });
   if (!r.ok) return fail(r.status, r.message);
   return ok({ image: r.image });
 });

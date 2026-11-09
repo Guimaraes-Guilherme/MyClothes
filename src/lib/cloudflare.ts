@@ -19,7 +19,7 @@ type CfResponse = { success?: boolean; result?: { image?: string }; errors?: { c
  * Gera a imagem. `prompts` são variações do mesmo pedido: se o filtro de conteúdo da Cloudflare
  * (erro 3030, que às vezes barra pedidos inocentes) recusar uma, tenta a próxima.
  */
-export async function generateImage(prompts: string[], refs: Blob[], size = { width: 768, height: 1024 }): Promise<GenResult> {
+export async function generateImage(prompts: string[], refs: Blob[], opts: { maxFlags?: number; cheapFirst?: boolean } = {}, size = { width: 768, height: 1024 }): Promise<GenResult> {
   const account = process.env.CF_ACCOUNT_ID;
   const token = process.env.CF_API_TOKEN;
   if (!account || !token) return { ok: false, status: 503, message: "A IA do manequim ainda não foi configurada no servidor." };
@@ -28,7 +28,15 @@ export async function generateImage(prompts: string[], refs: Blob[], size = { wi
   // O filtro de saída da Cloudflare é aleatório (depende da imagem gerada): cada tentativa usa
   // uma semente nova. Alterna os modelos e repete enquanto houver tempo.
   const prompt0 = prompts[0];
-  const attempts = Array.from({ length: 8 }, (_, i) => ({ model: MODELS[i % MODELS.length], prompt: prompts[i % prompts.length] ?? prompt0 }));
+  // Para não gastar a cota do dia: só a primeira tentativa usa o modelo melhor (mais caro);
+  // as repetições usam o modelo leve (cerca de 10x mais barato).
+  const best = MODELS[0];
+  const cheap = MODELS[MODELS.length - 1];
+  const maxFlags = opts.maxFlags ?? 2;
+  const attempts = Array.from({ length: maxFlags + 2 }, (_, i) => ({
+    model: i === 0 && !opts.cheapFirst ? best : cheap,
+    prompt: prompts[i % prompts.length] ?? prompt0,
+  }));
   let flagged = 0;
   const started = Date.now();
   const BUDGET = 52_000; // a função da Vercel tem 60 s no total
@@ -82,7 +90,7 @@ export async function generateImage(prompts: string[], refs: Blob[], size = { wi
       flagged++;
       last = { ok: false, status: 422, message: "FILTRO: O filtro de conteúdo da IA barrou a imagem (erro 3030)." };
       // Depois de 4 recusas seguidas, devolve para o navegador tentar com as fotos borradas.
-      if (flagged >= 4) return last;
+      if (flagged >= maxFlags) return last;
       continue;
     }
     last = { ok: false, status: 502, message: `A IA não conseguiu gerar a imagem agora. Tente de novo. (erro ${code ?? res.status}${msg ? `: ${msg.slice(0, 80)}` : ""})` };
