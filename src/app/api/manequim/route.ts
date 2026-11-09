@@ -29,6 +29,7 @@ export const POST = authed(async (req, user) => {
   const extraIds = ids(form.get("extraIds"));
   if (!refIds.length) return fail(422, "Escolha pelo menos uma peça.");
   const body = form.get("body") === "feminino" ? "female" : "male";
+  const soft = form.get("soft") === "1";
 
   const all = [...refIds, ...extraIds];
   const rows = await db
@@ -64,6 +65,7 @@ export const POST = authed(async (req, user) => {
     ...lines,
     ...extras,
     "Copy each garment from its reference image as faithfully as possible: same color, fabric texture, print, logo, embroidery and length. Use only the garment from each reference image and ignore any background, floor, bed or objects in it. Natural drape, folds and layering.",
+    soft ? "Draw the garments without any brand logos, crests, badges, numbers or text on them; keep their colors, stripes, collars and trims." : "",
     hasShoes ? "" : "Plain clean white sneakers.",
     hasBottom ? "" : "Simple plain grey trousers.",
     hasTop ? "" : "Simple plain white crew-neck t-shirt.",

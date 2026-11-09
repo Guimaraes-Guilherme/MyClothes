@@ -69,6 +69,7 @@ export function LookView() {
     const send = async (blur: (i: ItemView) => boolean) => {
       const form = new FormData();
       form.set("body", mannequinBody());
+      if (refs.some(blur)) form.set("soft", "1");
       form.set("itemIds", JSON.stringify(refs.map((i) => i.id)));
       form.set("extraIds", JSON.stringify(sl.items.filter((i) => !refs.includes(i)).map((i) => i.id)));
       const files = await Promise.all(refs.map((i) => referenceJpeg(i.fullUrl, blur(i))));
