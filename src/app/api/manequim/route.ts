@@ -58,21 +58,26 @@ export const POST = authed(async (req, user) => {
   const hasBottom = cats.has("baixo") || cats.has("vestido");
   const hasTop = cats.has("cima") || cats.has("vestido") || cats.has("casaco");
 
-  const prompt = [
-    `Professional fashion e-commerce product photo of a ${body} retail display mannequin: smooth matte white, faceless egg-shaped head, realistic athletic proportions, standing relaxed with one hand in the pocket, full body from head to shoes, centered.`,
-    "The mannequin wears ALL of these garments together as one outfit:",
+  const who = body === "female" ? "women's" : "men's";
+  const outfit = [
+    "It is fully dressed in this outfit, worn together:",
     ...lines,
     ...extras,
-    "Copy each garment from its reference image with maximum fidelity: same color, fabric texture, wash, print, logo, embroidery and length. Use only the garment from each reference image and ignore any background, floor, bed or objects in it. Natural realistic drape, folds and layering.",
+    "Copy each garment from its reference image as faithfully as possible: same color, fabric texture, print, logo, embroidery and length. Use only the garment from each reference image and ignore any background, floor, bed or objects in it. Natural drape, folds and layering.",
     hasShoes ? "" : "Plain clean white sneakers.",
-    hasBottom ? "" : "Simple plain neutral grey trousers (not part of the outfit, just neutral).",
-    hasTop ? "" : "Simple plain white crew-neck t-shirt (not part of the outfit, just neutral).",
-    "Seamless light warm-grey studio background, soft diffused light, gentle floor shadow, photorealistic, sharp, no text.",
-  ]
-    .filter(Boolean)
-    .join("\n");
+    hasBottom ? "" : "Simple plain grey trousers.",
+    hasTop ? "" : "Simple plain white crew-neck t-shirt.",
+  ].filter(Boolean);
+  const scene = "Seamless light warm-grey studio backdrop, soft diffused light, gentle floor shadow, photorealistic catalog photo, sharp, no text.";
 
-  const r = await generateImage(prompt, refs);
+  // Variações do pedido: se o filtro de conteúdo barrar uma, a próxima é tentada.
+  const prompts = [
+    [`Clothing catalog photo of a plastic ${who} fashion display mannequin in a clothing store: matte white plastic, faceless smooth head, standing straight, full figure from head to shoes, centered.`, ...outfit, scene].join("\n"),
+    [`Retail clothing display: a white plastic store mannequin (faceless, full figure) wearing a complete outfit, product photography for an online shop.`, ...outfit, scene].join("\n"),
+    [`E-commerce product photo of a complete clothing outfit displayed on a white plastic shop mannequin, full figure, front view.`, ...lines, ...extras, scene].join("\n"),
+  ];
+
+  const r = await generateImage(prompts, refs);
   if (!r.ok) return fail(r.status, r.message);
   return ok({ image: r.image });
 });

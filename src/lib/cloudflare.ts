@@ -15,15 +15,25 @@ export type GenResult = { ok: true; image: string; model: string } | { ok: false
 
 type CfResponse = { success?: boolean; result?: { image?: string }; errors?: { code?: number; message?: string }[] };
 
-export async function generateImage(prompt: string, refs: Blob[], size = { width: 768, height: 1024 }): Promise<GenResult> {
+/**
+ * Gera a imagem. `prompts` são variações do mesmo pedido: se o filtro de conteúdo da Cloudflare
+ * (erro 3030, que às vezes barra pedidos inocentes) recusar uma, tenta a próxima.
+ */
+export async function generateImage(prompts: string[], refs: Blob[], size = { width: 768, height: 1024 }): Promise<GenResult> {
   const account = process.env.CF_ACCOUNT_ID;
   const token = process.env.CF_API_TOKEN;
   if (!account || !token) return { ok: false, status: 503, message: "A IA do manequim ainda não foi configurada no servidor." };
 
   let last: GenResult = { ok: false, status: 502, message: "A IA não conseguiu gerar a imagem agora. Tente de novo." };
-  for (const model of MODELS) {
+  const attempts = MODELS.flatMap((model) => prompts.map((prompt) => ({ model, prompt })));
+  const started = Date.now();
+  const BUDGET = 52_000; // a função da Vercel tem 60 s no total
+  for (const { model, prompt } of attempts) {
+    const left = BUDGET - (Date.now() - started);
+    if (left < 8_000) break;
     const form = new FormData();
     form.set("prompt", prompt);
+    form.set("seed", String(Math.floor(Math.random() * 2 ** 31)));
     form.set("width", String(size.width));
     form.set("height", String(size.height));
     refs.slice(0, 4).forEach((b, i) => form.set(`input_image_${i}`, b, `ref_${i}.jpg`));
@@ -34,7 +44,7 @@ export async function generateImage(prompt: string, refs: Blob[], size = { width
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         body: form,
-        signal: AbortSignal.timeout(50_000),
+        signal: AbortSignal.timeout(left),
       });
     } catch {
       last = { ok: false, status: 504, message: "A IA demorou demais para responder. Tente de novo." };
@@ -52,10 +62,9 @@ export async function generateImage(prompt: string, refs: Blob[], size = { width
     if (res.status === 401 || res.status === 403) {
       return { ok: false, status: 502, message: "A chave da Cloudflare foi recusada. Confira o CF_API_TOKEN e o CF_ACCOUNT_ID." };
     }
-    // Cota diária grátis esgotada (ou limite de uso): tenta o próximo modelo, mais leve.
-    if (res.status === 429 || /neuron|quota|limit|3036|allocation/i.test(detail)) {
-      last = { ok: false, status: 429, message: "A cota grátis de hoje da IA acabou. Ela renova todo dia às 21h (horário de Brasília)." };
-      continue;
+    // Cota diária grátis esgotada: vale para todos os modelos da conta, então para aqui.
+    if (data?.errors?.[0]?.code === 3036 || /neuron|allocation/i.test(detail)) {
+      return { ok: false, status: 429, message: "A cota grátis de hoje da IA acabou. Ela renova todo dia às 21h (horário de Brasília)." };
     }
     const code = data?.errors?.[0]?.code;
     const msg = (data?.errors?.[0]?.message ?? "").toLowerCase();
@@ -63,8 +72,9 @@ export async function generateImage(prompt: string, refs: Blob[], size = { width
       last = { ok: false, status: 503, message: "A IA da Cloudflare está sobrecarregada agora. Tente de novo em alguns minutos." };
       continue;
     }
-    if (/nsfw|safety|flagged|moderation|content/.test(msg)) {
-      return { ok: false, status: 422, message: `O filtro de conteúdo da IA recusou essas fotos. Tente gerar de novo ou troque alguma peça. (erro ${code ?? res.status})` };
+    if (code === 3030 || /nsfw|safety|flagged|moderation/.test(msg)) {
+      last = { ok: false, status: 422, message: "O filtro de conteúdo da IA barrou este pedido (erro 3030). Toque em tentar de novo; se repetir, troque alguma peça." };
+      continue;
     }
     last = { ok: false, status: 502, message: `A IA não conseguiu gerar a imagem agora. Tente de novo. (erro ${code ?? res.status}${msg ? `: ${msg.slice(0, 80)}` : ""})` };
   }
