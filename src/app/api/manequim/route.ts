@@ -53,7 +53,10 @@ export const POST = authed(async (req, user) => {
   };
   const lines = refIds.map((id, i) => `- the ${describe(id)} shown in image ${i}, exactly as it appears there`);
   const extras = extraIds.filter((id) => byId.has(id)).map((id) => `- a ${describe(id)}`);
-  const hasShoes = [...refIds, ...extraIds].some((id) => byId.get(id)?.category === "calcado");
+  const cats = new Set([...refIds, ...extraIds].map((id) => byId.get(id)?.category));
+  const hasShoes = cats.has("calcado");
+  const hasBottom = cats.has("baixo") || cats.has("vestido");
+  const hasTop = cats.has("cima") || cats.has("vestido") || cats.has("casaco");
 
   const prompt = [
     `Professional fashion e-commerce product photo of a ${body} retail display mannequin: smooth matte white, faceless egg-shaped head, realistic athletic proportions, standing relaxed with one hand in the pocket, full body from head to shoes, centered.`,
@@ -62,6 +65,8 @@ export const POST = authed(async (req, user) => {
     ...extras,
     "Copy each garment from its reference image with maximum fidelity: same color, fabric texture, wash, print, logo, embroidery and length. Use only the garment from each reference image and ignore any background, floor, bed or objects in it. Natural realistic drape, folds and layering.",
     hasShoes ? "" : "Plain clean white sneakers.",
+    hasBottom ? "" : "Simple plain neutral grey trousers (not part of the outfit, just neutral).",
+    hasTop ? "" : "Simple plain white crew-neck t-shirt (not part of the outfit, just neutral).",
     "Seamless light warm-grey studio background, soft diffused light, gentle floor shadow, photorealistic, sharp, no text.",
   ]
     .filter(Boolean)

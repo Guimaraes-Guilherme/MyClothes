@@ -139,7 +139,7 @@ export function LookView() {
     <>
       <PageTitle
         title="Prove o look"
-        subtitle={looks.length ? "Deslize para ver seus looks salvos. Toque numa peça para ajustar." : "Monte no manequim, salve e prove em você com IA."}
+        subtitle={looks.length ? "Deslize para ver seus looks salvos. Toque numa peça para ajustar." : "Monte o look e veja num manequim de verdade."}
         action={
           <Button variant="secondary" onClick={shuffle} disabled={!items.length} className="h-10 px-4" aria-label="Look aleatório">
             <Shuffle className="h-4 w-4" /> <span className="hidden sm:inline">Surpreenda-me</span>
