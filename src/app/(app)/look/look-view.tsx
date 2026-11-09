@@ -65,18 +65,34 @@ export function LookView() {
       return;
     }
     setVitrine((v) => ({ ...v, [key]: { state: "loading" } }));
-    try {
-      const refs = pickReferences(sl.items);
+    const refs = pickReferences(sl.items);
+    const send = async (blur: (i: ItemView) => boolean) => {
       const form = new FormData();
       form.set("body", mannequinBody());
       form.set("itemIds", JSON.stringify(refs.map((i) => i.id)));
       form.set("extraIds", JSON.stringify(sl.items.filter((i) => !refs.includes(i)).map((i) => i.id)));
-      const files = await Promise.all(refs.map((i) => referenceJpeg(i.fullUrl)));
+      const files = await Promise.all(refs.map((i) => referenceJpeg(i.fullUrl, blur(i))));
       files.forEach((f, n) => form.set(`ref_${n}`, f, `ref_${n}.jpg`));
-      const r = await api<{ image: string }>("/api/manequim", { method: "POST", body: form });
-      setVitrine((v) => ({ ...v, [key]: { state: "done", image: r.image } }));
+      return api<{ image: string }>("/api/manequim", { method: "POST", body: form });
+    };
+    try {
+      // O filtro da Cloudflare barra logos e escudos de marcas. Se barrar, tenta de novo borrando
+      // primeiro as peças de cima (onde ficam os escudos) e depois todas.
+      const isTop = (i: ItemView) => i.category === "cima" || i.category === "casaco" || i.category === "vestido";
+      let r: { image: string } | null = null;
+      for (const blur of [() => false, isTop, () => true]) {
+        try {
+          r = await send(blur);
+          break;
+        } catch (e) {
+          if (!(e as Error).message.startsWith("FILTRO:")) throw e;
+        }
+      }
+      if (!r) throw new Error("O filtro da IA barrou este look mesmo com os logos borrados. Troque alguma peça e tente de novo.");
+      const image = r.image;
+      setVitrine((v) => ({ ...v, [key]: { state: "done", image } }));
       setShowPhoto((p) => ({ ...p, [key]: true }));
-      if (lookId) await attachToLook(lookId, r.image);
+      if (lookId) await attachToLook(lookId, image);
     } catch (e) {
       setVitrine((v) => ({ ...v, [key]: { state: "error", message: (e as Error).message } }));
     }
@@ -462,10 +478,23 @@ function pickReferences(list: ItemView[]) {
   return [...list].sort((a, b) => REF_PRIORITY.indexOf(a.category) - REF_PRIORITY.indexOf(b.category)).slice(0, 4);
 }
 
-/** Foto da peça reduzida (o modelo aceita até 512 px), em JPEG com fundo branco. */
-async function referenceJpeg(url: string): Promise<Blob> {
+/**
+ * Foto da peça reduzida (o modelo aceita até 512 px), em JPEG com fundo branco.
+ * `soft` borra os detalhes (logos e escudos), mantendo cores e formato, para passar no filtro da IA.
+ */
+async function referenceJpeg(url: string, soft = false): Promise<Blob> {
   const blob = await fetch(url).then((r) => r.blob());
-  const bmp = await createImageBitmap(blob);
+  let bmp: ImageBitmap = await createImageBitmap(blob);
+  if (soft) {
+    const tiny = document.createElement("canvas");
+    tiny.width = 48;
+    tiny.height = Math.max(1, Math.round((48 * bmp.height) / bmp.width));
+    tiny.getContext("2d")!.drawImage(bmp, 0, 0, tiny.width, tiny.height);
+    const w = bmp.width;
+    const h = bmp.height;
+    bmp.close?.();
+    bmp = await createImageBitmap(tiny, { resizeWidth: w, resizeHeight: h, resizeQuality: "high" });
+  }
   const s = Math.min(1, 500 / Math.max(bmp.width, bmp.height));
   const c = document.createElement("canvas");
   c.width = Math.max(1, Math.round(bmp.width * s));

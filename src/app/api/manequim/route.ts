@@ -70,11 +70,8 @@ export const POST = authed(async (req, user) => {
   ].filter(Boolean);
   const scene = "Seamless light warm-grey studio backdrop, soft diffused light, gentle floor shadow, photorealistic catalog photo, sharp, no text.";
 
-  // Variações do pedido: se o filtro de conteúdo barrar uma, a próxima é tentada.
   const prompts = [
     [`Clothing catalog photo of a plastic ${who} fashion display mannequin in a clothing store: matte white plastic, faceless smooth head, standing straight, full figure from head to shoes, centered.`, ...outfit, scene].join("\n"),
-    [`Retail clothing display: a white plastic store mannequin (faceless, full figure) wearing a complete outfit, product photography for an online shop.`, ...outfit, scene].join("\n"),
-    [`E-commerce product photo of a complete clothing outfit displayed on a white plastic shop mannequin, full figure, front view.`, ...lines, ...extras, scene].join("\n"),
   ];
 
   const r = await generateImage(prompts, refs);

@@ -72,9 +72,10 @@ export async function generateImage(prompts: string[], refs: Blob[], size = { wi
       last = { ok: false, status: 503, message: "A IA da Cloudflare está sobrecarregada agora. Tente de novo em alguns minutos." };
       continue;
     }
+    // Filtro da Cloudflare barrou a imagem gerada. Na prática é causado por logos/escudos de marcas
+    // nas peças: o navegador tenta de novo com as fotos borradas (outro texto não resolve).
     if (code === 3030 || /nsfw|safety|flagged|moderation/.test(msg)) {
-      last = { ok: false, status: 422, message: "O filtro de conteúdo da IA barrou este pedido (erro 3030). Toque em tentar de novo; se repetir, troque alguma peça." };
-      continue;
+      return { ok: false, status: 422, message: "FILTRO: O filtro de conteúdo da IA barrou a imagem (erro 3030)." };
     }
     last = { ok: false, status: 502, message: `A IA não conseguiu gerar a imagem agora. Tente de novo. (erro ${code ?? res.status}${msg ? `: ${msg.slice(0, 80)}` : ""})` };
   }
