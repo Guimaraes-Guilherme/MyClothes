@@ -13,7 +13,6 @@ export const getCurrentUser = cache(async () => {
     name: user.name,
     email: user.email,
     faceUrl: user.faceUpdatedAt ? `/api/img/rosto?v=${user.faceUpdatedAt.getTime()}` : null,
-    bodyUrl: user.bodyUpdatedAt ? `/api/img/corpo?v=${user.bodyUpdatedAt.getTime()}` : null,
     createdAt: user.createdAt,
   };
 });

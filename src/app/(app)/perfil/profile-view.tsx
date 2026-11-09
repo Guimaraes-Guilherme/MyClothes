@@ -3,8 +3,8 @@
 import clsx from "clsx";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { Camera, LogOut, Trash2, UserRound } from "lucide-react";
-import { cropSquare, prepareBodyPhoto } from "@/lib/process-image";
+import { LogOut, Trash2, UserRound } from "lucide-react";
+import { cropSquare } from "@/lib/process-image";
 import { Mannequin } from "@/components/mannequin";
 import { Button, PageTitle, inputClass } from "@/components/ui";
 import { api, useWardrobe } from "@/components/wardrobe";
@@ -12,14 +12,13 @@ import { signOut } from "../../(auth)/actions";
 
 export function ProfileView({ name: initialName, email }: { name: string; email: string }) {
   const router = useRouter();
-  const { items, looks, faceUrl, bodyUrl, aiEnabled } = useWardrobe();
+  const { items, looks, faceUrl } = useWardrobe();
   const [name, setName] = useState(initialName);
   const [savedName, setSavedName] = useState(initialName);
   const [msg, setMsg] = useState<string | null>(null);
   const [faceFile, setFaceFile] = useState<File | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const faceRef = useRef<HTMLInputElement>(null);
-  const bodyRef = useRef<HTMLInputElement>(null);
 
   async function saveName() {
     setMsg(null);
@@ -32,7 +31,7 @@ export function ProfileView({ name: initialName, email }: { name: string; email:
     }
   }
 
-  async function upload(kind: "rosto" | "corpo", blob: Blob) {
+  async function upload(kind: "rosto", blob: Blob) {
     setBusy(kind);
     setMsg(null);
     try {
@@ -47,7 +46,7 @@ export function ProfileView({ name: initialName, email }: { name: string; email:
     }
   }
 
-  async function clear(kind: "rosto" | "corpo") {
+  async function clear(kind: "rosto") {
     setBusy(kind);
     await api(`/api/eu/${kind}`, { method: "DELETE" }).catch(() => {});
     router.refresh();
@@ -80,45 +79,6 @@ export function ProfileView({ name: initialName, email }: { name: string; email:
             )}
           </div>
         </div>
-      </section>
-
-      <section id="foto-corpo" className="glass-strong mt-4 scroll-mt-24 rounded-[28px] p-5">
-        <h2 className="text-lg font-bold tracking-tight">Foto para provar com IA</h2>
-        <p className="mt-1 text-sm text-muted">
-          Uma foto sua de corpo inteiro, de frente, com boa luz e roupa justa ou simples. A IA veste os looks nessa foto.
-        </p>
-        <div className="mt-4 flex items-end gap-4">
-          <div className="grid aspect-[3/4] w-28 shrink-0 place-items-center overflow-hidden rounded-2xl bg-white/70">
-            {bodyUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={bodyUrl} alt="Sua foto de corpo inteiro" className="h-full w-full object-cover" />
-            ) : (
-              <UserRound className="h-8 w-8 text-faint" />
-            )}
-          </div>
-          <div className="flex flex-col gap-2">
-            <input
-              ref={bodyRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={async (e) => {
-                const f = e.target.files?.[0];
-                e.target.value = "";
-                if (f) await upload("corpo", await prepareBodyPhoto(f));
-              }}
-            />
-            <Button onClick={() => bodyRef.current?.click()} disabled={busy === "corpo"}>
-              <Camera className="h-4 w-4" /> {busy === "corpo" ? "Enviando…" : bodyUrl ? "Trocar foto" : "Adicionar foto"}
-            </Button>
-            {bodyUrl && (
-              <Button variant="ghost" onClick={() => clear("corpo")} disabled={busy === "corpo"}>
-                <Trash2 className="h-4 w-4" /> Remover
-              </Button>
-            )}
-          </div>
-        </div>
-        {!aiEnabled && <p className="mt-4 text-[12px] text-faint">Por enquanto a prova usa o app do Gemini no celular (grátis).</p>}
       </section>
 
       <section className="glass mt-4 rounded-[28px] p-5">

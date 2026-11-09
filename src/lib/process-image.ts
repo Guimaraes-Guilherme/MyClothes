@@ -148,13 +148,6 @@ export async function cropSquare(file: Blob, zoom: number, cx: number, cy: numbe
   return blob;
 }
 
-/** Foto de corpo inteiro para a IA: só reduz e comprime. */
-export async function prepareBodyPhoto(file: Blob): Promise<Blob> {
-  const c = await downscale(file, 1280);
-  let blob = await toBlob(c, "image/jpeg", 0.88);
-  if (blob.size > 1400 * 1024) blob = await toBlob(c, "image/jpeg", 0.75);
-  return blob;
-}
 
 /** Miniatura leve da peça já tratada (vitrine e manequim). */
 export async function thumbnail(full: Processed, transparent: boolean): Promise<Blob> {

@@ -36,10 +36,6 @@ export const users = pgTable(
     face: bytea("face"),
     faceType: text("face_type"),
     faceUpdatedAt: timestamp("face_updated_at", { withTimezone: true }),
-    /** Foto de corpo inteiro, usada só na prova com IA. */
-    body: bytea("body"),
-    bodyType: text("body_type"),
-    bodyUpdatedAt: timestamp("body_updated_at", { withTimezone: true }),
     theme: themeEnum("theme").notNull().default("dark"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

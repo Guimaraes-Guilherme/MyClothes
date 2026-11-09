@@ -7,7 +7,6 @@ type Wardrobe = {
   items: ItemView[];
   looks: LookView[];
   faceUrl: string | null;
-  bodyUrl: string | null;
   aiEnabled: boolean;
   outfit: Outfit;
   outfitItems: ItemView[];
@@ -24,7 +23,6 @@ export function WardrobeProvider({
   items: initialItems,
   looks,
   faceUrl,
-  bodyUrl,
   aiEnabled,
   children,
 }: Omit<Wardrobe, "outfit" | "outfitItems" | "setOutfit" | "toggle" | "patchItem" | "items"> & { items: ItemView[]; children: React.ReactNode }) {
@@ -57,15 +55,14 @@ export function WardrobeProvider({
       items,
       looks,
       faceUrl,
-      bodyUrl,
-      aiEnabled,
+          aiEnabled,
       outfit,
       outfitItems,
       setOutfit,
       toggle: (item) => setOutfit(equip(outfit, item)),
       patchItem: (id, patch) => setOverrides((o) => ({ ...o, [id]: { ...o[id], ...patch } })),
     }),
-    [items, looks, faceUrl, bodyUrl, aiEnabled, outfit, outfitItems, setOutfit],
+    [items, looks, faceUrl, aiEnabled, outfit, outfitItems, setOutfit],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

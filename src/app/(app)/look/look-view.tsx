@@ -4,9 +4,8 @@ import clsx from "clsx";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bookmark, Download, Minus, RotateCcw, Shuffle, SlidersHorizontal, Sparkles, Trash2, X } from "lucide-react";
+import { Bookmark, Minus, RefreshCw, RotateCcw, Shuffle, SlidersHorizontal, Sparkles, Trash2, X } from "lucide-react";
 import { CATEGORY_INFO, CATEGORY_ORDER, outfitFromIds, type Category, type ItemView, type LookView, type Outfit } from "@/lib/categories";
-import { GeminiShare } from "@/components/gemini-share";
 import { Mannequin } from "@/components/mannequin";
 import { Button, ButtonLink, PageTitle, inputClass } from "@/components/ui";
 import { api, useWardrobe } from "@/components/wardrobe";
@@ -15,12 +14,11 @@ type Slide = { kind: "current"; name: string; items: ItemView[] } | { kind: "sav
 
 export function LookView() {
   const router = useRouter();
-  const { items, looks, outfitItems, setOutfit, outfit, faceUrl, bodyUrl, aiEnabled, patchItem } = useWardrobe();
+  const { items, looks, outfitItems, setOutfit, outfit, faceUrl, aiEnabled, patchItem } = useWardrobe();
   const track = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState(0);
   const [adjustingRaw, setAdjusting] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [ai, setAi] = useState<AiState | null>(null);
   const [showPhoto, setShowPhoto] = useState<Record<string, boolean>>({});
   // Fotos de vitrine (manequim realista) geradas nesta visita, por look.
   const [vitrine, setVitrine] = useState<Record<string, { state: "loading" | "done" | "error"; image?: string; message?: string }>>({});
@@ -58,18 +56,24 @@ export function LookView() {
     router.refresh();
   }
 
-  /** Manequim de loja realista vestindo o look (IA). Sem chave da IA, vai pelo app do Gemini. */
+  /** Manequim de loja realista vestindo o look, gerado por IA (Cloudflare). */
   async function makeVitrine(sl: Slide) {
     const key = keyOf(sl);
     const lookId = sl.kind === "saved" ? sl.look.id : undefined;
-    if (!aiEnabled) return setAi({ state: "free", mode: "mannequin", items: sl.items, lookId, vitrineKey: key });
+    if (!aiEnabled) {
+      setVitrine((v) => ({ ...v, [key]: { state: "error", message: "A IA do manequim ainda não foi configurada no servidor." } }));
+      return;
+    }
     setVitrine((v) => ({ ...v, [key]: { state: "loading" } }));
     try {
-      const r = await api<{ image: string }>("/api/manequim", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ itemIds: sl.items.map((i) => i.id), body: mannequinBody() }),
-      });
+      const refs = pickReferences(sl.items);
+      const form = new FormData();
+      form.set("body", mannequinBody());
+      form.set("itemIds", JSON.stringify(refs.map((i) => i.id)));
+      form.set("extraIds", JSON.stringify(sl.items.filter((i) => !refs.includes(i)).map((i) => i.id)));
+      const files = await Promise.all(refs.map((i) => referenceJpeg(i.fullUrl)));
+      files.forEach((f, n) => form.set(`ref_${n}`, f, `ref_${n}.jpg`));
+      const r = await api<{ image: string }>("/api/manequim", { method: "POST", body: form });
       setVitrine((v) => ({ ...v, [key]: { state: "done", image: r.image } }));
       setShowPhoto((p) => ({ ...p, [key]: true }));
       if (lookId) await attachToLook(lookId, r.image);
@@ -77,6 +81,7 @@ export function LookView() {
       setVitrine((v) => ({ ...v, [key]: { state: "error", message: (e as Error).message } }));
     }
   }
+
   const sorted = [...slide.items].sort((a, b) => CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category));
 
   function remove(cat: Category) {
@@ -127,25 +132,6 @@ export function LookView() {
     router.refresh();
   }
 
-  async function tryOn() {
-    const ids = slide.items.map((i) => i.id);
-    const lookId = slide.kind === "saved" ? slide.look.id : undefined;
-    const base = { lookId, items: slide.items, mode: "tryon" as const };
-    if (!bodyUrl) return setAi({ state: "needBody", ...base });
-    // Sem chave da IA no servidor: vai direto para a prova grátis pelo app do Gemini.
-    if (!aiEnabled) return setAi({ state: "free", ...base });
-    setAi({ state: "loading", ...base });
-    try {
-      const r = await api<{ image: string }>("/api/provar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ itemIds: ids }),
-      });
-      setAi({ state: "done", image: r.image, ...base });
-    } catch (e) {
-      setAi({ state: "error", message: (e as Error).message, ...base });
-    }
-  }
 
   const adjustItem = adjusting ? outfitItems.find((i) => i.id === adjusting) : null;
 
@@ -245,14 +231,8 @@ export function LookView() {
       {vitrine[keyOf(slide)]?.state === "error" && (
         <div className="glass mx-auto mt-4 max-w-xl rounded-[22px] p-4 text-center text-sm">
           <p className="font-medium">{vitrine[keyOf(slide)]?.message}</p>
-          <div className="mt-3 flex justify-center gap-2">
-            <Button
-              className="h-10"
-              onClick={() => setAi({ state: "free", mode: "mannequin", items: slide.items, lookId: slide.kind === "saved" ? slide.look.id : undefined, vitrineKey: keyOf(slide) })}
-            >
-              Fazer pelo app do Gemini
-            </Button>
-            <Button variant="ghost" className="h-10" onClick={() => makeVitrine(slide)}>
+          <div className="mt-3 flex justify-center">
+            <Button variant="secondary" className="h-10" onClick={() => makeVitrine(slide)}>
               Tentar de novo
             </Button>
           </div>
@@ -282,13 +262,16 @@ export function LookView() {
               <RotateCcw className="h-4 w-4" /> Montar de novo
             </button>
           )}
-          <button
-            type="button"
-            onClick={tryOn}
-            className="glass-strong flex h-13 items-center justify-center gap-2 rounded-full px-5 text-sm font-semibold active:scale-[0.98]"
-          >
-            <Sparkles className="h-4 w-4" /> Provar com IA
-          </button>
+          {(vitrine[keyOf(slide)]?.image || (slide.kind === "saved" && slide.look.aiUrl)) && (
+            <button
+              type="button"
+              onClick={() => makeVitrine(slide)}
+              disabled={vitrine[keyOf(slide)]?.state === "loading"}
+              className="glass-strong flex h-13 items-center justify-center gap-2 rounded-full px-5 text-sm font-semibold active:scale-[0.98] disabled:opacity-50"
+            >
+              <RefreshCw className="h-4 w-4" /> Gerar de novo
+            </button>
+          )}
         </div>
       )}
 
@@ -362,36 +345,6 @@ export function LookView() {
         />
       )}
 
-      {ai && (
-        <AiSheet
-          state={ai}
-          bodyUrl={bodyUrl}
-          onFree={() => setAi({ ...ai, state: "free" })}
-          onResult={(image) => {
-            if (ai.mode === "mannequin" && ai.vitrineKey) {
-              const k = ai.vitrineKey;
-              setVitrine((v) => ({ ...v, [k]: { state: "done", image } }));
-              setShowPhoto((p) => ({ ...p, [k]: true }));
-              if (ai.lookId) attachToLook(ai.lookId, image).catch(() => {});
-              setAi(null);
-            } else setAi({ ...ai, state: "done", image, fromGemini: true });
-          }}
-          canSave={ai.lookId ? true : outfitItems.length > 0}
-          onClose={() => setAi(null)}
-          onRetry={tryOn}
-          onSave={async (blob, name) => {
-            if (ai.lookId) {
-              const form = new FormData();
-              form.set("aiImage", blob, "look.webp");
-              await api(`/api/looks/${ai.lookId}`, { method: "PATCH", body: form });
-              router.refresh();
-            } else {
-              await saveLook(name, blob);
-            }
-            setAi(null);
-          }}
-        />
-      )}
     </>
   );
 }
@@ -494,18 +447,6 @@ async function toWebp(dataUrl: string): Promise<Blob> {
   return webp.type === "image/webp" ? webp : enc("image/jpeg");
 }
 
-type AiState = {
-  state: "loading" | "done" | "error" | "free" | "needBody";
-  items: ItemView[];
-  image?: string;
-  message?: string;
-  lookId?: string;
-  fromGemini?: boolean;
-  /** tryon = você vestindo o look; mannequin = manequim de loja. */
-  mode: "tryon" | "mannequin";
-  vitrineKey?: string;
-};
-
 /** Tipo de manequim escolhido no Perfil (guardado no aparelho). */
 export function mannequinBody(): "masculino" | "feminino" {
   try {
@@ -515,122 +456,25 @@ export function mannequinBody(): "masculino" | "feminino" {
   }
 }
 
-function AiSheet({
-  state,
-  bodyUrl,
-  onFree,
-  onResult,
-  canSave,
-  onClose,
-  onRetry,
-  onSave,
-}: {
-  state: AiState;
-  bodyUrl: string | null;
-  onFree: () => void;
-  onResult: (dataUrl: string) => void;
-  canSave: boolean;
-  onClose: () => void;
-  onRetry: () => void;
-  onSave: (blob: Blob, name: string) => Promise<void>;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+/** Até 4 peças vão como foto de referência (limite do modelo): as mais visíveis primeiro. */
+const REF_PRIORITY: Category[] = ["vestido", "cima", "baixo", "casaco", "calcado", "chapeu", "acessorio"];
+function pickReferences(list: ItemView[]) {
+  return [...list].sort((a, b) => REF_PRIORITY.indexOf(a.category) - REF_PRIORITY.indexOf(b.category)).slice(0, 4);
+}
 
-  if (state.mode === "tryon" && (state.state === "needBody" || !bodyUrl)) {
-    return (
-      <Sheet onClose={onClose} label="Provar com IA">
-        <Sparkles className="h-6 w-6" />
-        <h3 className="mt-3 text-xl font-bold tracking-tight">Falta um passo para provar com IA</h3>
-        <p className="mt-2 text-sm text-muted">
-          Adicione no Perfil uma foto sua de corpo inteiro, de frente e com boa luz. A IA veste as peças nessa foto.
-        </p>
-        <ButtonLink href="/perfil#foto-corpo" className="mt-5 h-12 w-full">
-          Adicionar minha foto
-        </ButtonLink>
-      </Sheet>
-    );
-  }
-
-  if (state.state === "free") {
-    const mannequin = state.mode === "mannequin";
-    return (
-      <Sheet onClose={onClose} label="Usar o app do Gemini">
-        <h3 className="pr-10 text-xl font-bold tracking-tight">{mannequin ? "Manequim real pelo Gemini" : "Provar no app do Gemini"}</h3>
-        <p className="mb-5 mt-1 text-sm text-muted">Grátis, usando o app do Gemini no seu celular (tem limite por dia).</p>
-        <GeminiShare mode={state.mode} body={mannequinBody()} items={state.items} bodyUrl={mannequin ? null : bodyUrl} onResult={onResult} />
-      </Sheet>
-    );
-  }
-
-  return (
-    <Sheet onClose={onClose} label="Provar com IA">
-      <h3 className="text-xl font-bold tracking-tight">Provando em você</h3>
-      <div className="relative mt-4 aspect-[3/4] w-full overflow-hidden rounded-[24px] bg-white/70">
-        {state.state === "loading" && (
-          <>
-            <div className="animate-shimmer absolute inset-0" />
-            <div className="absolute inset-0 grid place-items-center text-center">
-              <div>
-                <Sparkles className="mx-auto h-6 w-6 animate-pulse" />
-                <p className="mt-2 text-sm font-medium">Vestindo as peças…</p>
-                <p className="text-xs text-muted">Leva uns 10 a 20 segundos.</p>
-              </div>
-            </div>
-          </>
-        )}
-        {state.state === "done" && state.image && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={state.image} alt="Você vestindo o look" className="animate-pop-in h-full w-full object-cover" />
-        )}
-        {state.state === "error" && (
-          <div className="absolute inset-0 grid place-items-center p-6 text-center">
-            <div>
-              <p className="text-sm font-medium">{state.message}</p>
-              <div className="mt-4 flex flex-col items-center gap-2">
-                <Button onClick={onFree}>Provar grátis no app do Gemini</Button>
-                <Button variant="ghost" onClick={onRetry}>
-                  Tentar de novo
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-      {state.state === "done" && state.image && (
-        <div className="mt-4 flex gap-2">
-          {canSave && (
-            <Button
-              className="h-12 flex-1"
-              disabled={busy}
-              onClick={async () => {
-                setBusy(true);
-                setError(null);
-                try {
-                  await onSave(await toWebp(state.image!), defaultName());
-                } catch (e) {
-                  setError((e as Error).message);
-                  setBusy(false);
-                }
-              }}
-            >
-              <Bookmark className="h-4 w-4" /> {busy ? "Salvando…" : state.lookId ? "Guardar no look" : "Salvar look com a foto"}
-            </Button>
-          )}
-          <a href={state.image} download="provador-look.png" className="glass grid h-12 w-12 place-items-center rounded-full" aria-label="Baixar foto">
-            <Download className="h-4 w-4" />
-          </a>
-          <Button variant="secondary" className="h-12 w-12 px-0" onClick={state.fromGemini ? onFree : onRetry} aria-label="Gerar de novo">
-            <RotateCcw className="h-4 w-4" />
-          </Button>
-        </div>
-      )}
-      {error && <p className="mt-3 text-sm font-medium">{error}</p>}
-      {!state.fromGemini && (
-        <button type="button" onClick={onFree} className="mx-auto mt-3 block text-center text-[12px] font-medium text-muted underline underline-offset-4">
-          Provar grátis no app do Gemini
-        </button>
-      )}
-    </Sheet>
-  );
+/** Foto da peça reduzida (o modelo aceita até 512 px), em JPEG com fundo branco. */
+async function referenceJpeg(url: string): Promise<Blob> {
+  const blob = await fetch(url).then((r) => r.blob());
+  const bmp = await createImageBitmap(blob);
+  const s = Math.min(1, 500 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement("canvas");
+  c.width = Math.max(1, Math.round(bmp.width * s));
+  c.height = Math.max(1, Math.round(bmp.height * s));
+  const ctx = c.getContext("2d")!;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, c.width, c.height);
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(bmp, 0, 0, c.width, c.height);
+  bmp.close?.();
+  return new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error("Não consegui preparar as fotos."))), "image/jpeg", 0.92));
 }

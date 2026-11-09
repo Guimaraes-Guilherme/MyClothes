@@ -7,8 +7,7 @@ Seu armário no celular. Fotografe suas roupas, veja tudo numa vitrine de pratel
 - **Armário:** cada peça numa prateleira de acrílico, com filtro por tipo e favoritas. Tocando, a peça cresce no centro sobre a prateleira acesa, com as vizinhas desfocadas dos lados (deslize para passar). O **+** veste a peça no manequim.
 - **Nova peça:** tire a foto ou escolha da galeria. O fundo é removido **no próprio celular** (o modelo baixa uns 40 MB na primeira vez e fica guardado), a peça é recortada rente e vai para a prateleira. Escolha o tipo, nome e cor.
 - **Look:** o manequim vestido no centro e os looks salvos desfocados dos lados, como uma passarela. Embaixo, a lista das peças. Dá para ajustar tamanho e posição de cada peça, tirar peças, sortear um look ("Surpreenda-me") e salvar.
-- **Provar no app do Gemini (grátis):** sem chave de IA no servidor (ou quando a cota acaba), o Provador prepara sua foto + as peças, copia o pedido pronto e abre o compartilhamento do celular para o app Gemini. A foto gerada volta para o look pelo botão "Já tenho a foto do Gemini".
-- **Provar com IA:** manda sua foto de corpo inteiro + as peças para o modelo de imagem do Google (Gemini) e devolve uma foto realista sua com o look. A foto pode ser guardada junto do look.
+- **Manequim real (IA):** o botão "Ver no manequim real" manda as fotos das peças para a Cloudflare Workers AI (modelo FLUX.2) e devolve uma foto de catálogo: manequim de loja branco, sem rosto, vestindo o look, em fundo de estúdio. A foto fica guardada no look. Masculino ou feminino, escolhido no Perfil.
 - **Perfil:** seu rosto na cabeça do manequim (opcional, com enquadramento), foto de corpo para a IA e conta.
 - **App no celular (PWA):** instala na tela inicial, abre em tela cheia e guarda as fotos das roupas no aparelho.
 - **Uso pessoal:** só a primeira conta pode ser criada; depois o cadastro fecha sozinho (`ALLOW_SIGNUP=true` reabre).
@@ -17,7 +16,7 @@ Visual: fundo branco de estúdio, superfícies de vidro fosco, texto e botões p
 
 ## Tecnologias
 
-Next.js 16 (App Router) + React 19 + TypeScript · PostgreSQL + Drizzle ORM · Tailwind CSS 4 · remoção de fundo com `@imgly/background-removal` (roda no navegador) · prova com IA pela API do Gemini.
+Next.js 16 (App Router) + React 19 + TypeScript · PostgreSQL + Drizzle ORM · Tailwind CSS 4 · remoção de fundo com `@imgly/background-removal` (roda no navegador) · manequim realista pela Cloudflare Workers AI (FLUX.2).
 
 As imagens ficam no próprio banco (são pequenas: as peças são salvas em WebP de até ~900 px), então não precisa de outro serviço de arquivos.
 
@@ -38,14 +37,14 @@ npm run dev               # http://localhost:3000
 3. Rode uma vez: `DATABASE_URL=... npm run db:migrate`.
 4. Abra o site e crie sua conta (a primeira é a dona; depois o cadastro fecha).
 
-### Ligando a prova com IA
+### Ligando o manequim real (grátis)
 
-1. Entre em https://aistudio.google.com/apikey e crie uma chave.
-2. Ative o faturamento no Google AI Studio (o modelo de imagem é pago: alguns centavos de dólar por foto gerada).
-3. Na Vercel, adicione `GEMINI_API_KEY` com a chave e faça um novo deploy.
-4. No app, em Perfil, adicione sua foto de corpo inteiro.
+1. Crie uma conta grátis em https://dash.cloudflare.com (sem cartão).
+2. Copie o **Account ID** (painel > Workers AI ou a URL do painel).
+3. Em My Profile > API Tokens, crie um token com o modelo **Workers AI**.
+4. Na Vercel, adicione `CF_ACCOUNT_ID` e `CF_API_TOKEN` e faça um novo deploy.
 
-O modelo padrão é `gemini-2.5-flash-image`; dá para trocar com `GEMINI_IMAGE_MODEL`.
+O plano grátis tem uma cota diária (renova às 00:00 UTC). O app usa o FLUX.2 klein 9B e, quando a cota dele acaba, passa para o klein 4B, mais leve.
 
 ## Scripts
 

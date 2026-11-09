@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
+import { aiEnabled } from "@/lib/cloudflare";
 import { listItems, listLooks } from "@/lib/wardrobe";
 import { Avatar, Logo } from "@/components/ui";
 import { MobileNav, NavLinks } from "@/components/nav";
@@ -10,7 +11,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const user = await requireUser();
   const [items, looks] = await Promise.all([listItems(user.id), listLooks(user.id)]);
   return (
-    <WardrobeProvider items={items} looks={looks} faceUrl={user.faceUrl} bodyUrl={user.bodyUrl} aiEnabled={Boolean(process.env.GEMINI_API_KEY)}>
+    <WardrobeProvider items={items} looks={looks} faceUrl={user.faceUrl} aiEnabled={aiEnabled()}>
       <div className="flex min-h-dvh flex-col">
         <header className="sticky top-0 z-40 bg-[#f6f6f9]/80 pt-[env(safe-area-inset-top)] backdrop-blur-xl">
           <div className="mx-auto flex h-16 max-w-6xl items-center gap-4 px-4 sm:px-6">
