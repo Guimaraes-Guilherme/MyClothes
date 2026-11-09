@@ -2,7 +2,7 @@
 // - Arquivos estáticos (JS, CSS, fontes, ícones): guardados no aparelho para abrir rápido.
 // - Fotos das roupas e looks (/api/img, com versão na URL): guardadas no aparelho com limite.
 // - Páginas: sempre buscadas na rede (os dados são pessoais e mudam); sem internet, mostra /offline.
-const VERSION = "v2";
+const VERSION = "v3";
 const STATIC = `pv-static-${VERSION}`;
 const IMAGES = `pv-images-${VERSION}`;
 const PAGES = `pv-pages-${VERSION}`;
