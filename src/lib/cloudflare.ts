@@ -76,7 +76,7 @@ export async function generateImage(prompts: string[], refs: Blob[], opts: { max
     }
     // Cota diária grátis esgotada: vale para todos os modelos da conta, então para aqui.
     if (data?.errors?.[0]?.code === 3036 || /neuron|allocation/i.test(detail)) {
-      return { ok: false, status: 429, message: "A cota grátis de hoje da IA acabou. Ela renova todo dia às 21h (horário de Brasília)." };
+      return { ok: false, status: 429, message: "A cota grátis da IA acabou por enquanto. Ela volta em até 24 horas depois do uso." };
     }
     const code = data?.errors?.[0]?.code;
     const msg = (data?.errors?.[0]?.message ?? "").toLowerCase();

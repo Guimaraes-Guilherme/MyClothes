@@ -44,7 +44,7 @@ npm run dev               # http://localhost:3000
 3. Em My Profile > API Tokens, crie um token com o modelo **Workers AI**.
 4. Na Vercel, adicione `CF_ACCOUNT_ID` e `CF_API_TOKEN` e faça um novo deploy.
 
-O plano grátis tem uma cota diária (renova às 00:00 UTC). O app usa o FLUX.2 klein 9B e, quando a cota dele acaba, passa para o klein 4B, mais leve.
+O plano grátis tem uma cota diária de 10 mil neurons (na prática, libera 24 h depois do uso). O app usa o FLUX.2 klein 9B e, quando a cota dele acaba, passa para o klein 4B, mais leve.
 
 ## Scripts
 
