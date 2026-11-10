@@ -4,7 +4,11 @@ import "server-only";
  * Geração de imagem pela Cloudflare Workers AI (modelos FLUX.2 da Black Forest Labs).
  * O plano grátis da Cloudflare dá uma cota diária; quando o modelo maior esgota, cai para o menor.
  */
-const MODELS = (process.env.CF_IMAGE_MODELS || "@cf/black-forest-labs/flux-2-klein-9b,@cf/black-forest-labs/flux-2-klein-4b")
+// Padrão: modelo leve (klein 4B, ~10x mais barato: dezenas de fotos/dia no plano grátis).
+// O klein 9B (mais caro, ~7 fotos/dia) fica para o modo "alta qualidade".
+const LIGHT = "@cf/black-forest-labs/flux-2-klein-4b";
+const HIGH = "@cf/black-forest-labs/flux-2-klein-9b";
+const MODELS = (process.env.CF_IMAGE_MODELS || `${HIGH},${LIGHT}`)
   .split(",")
   .map((m) => m.trim())
   .filter(Boolean);
@@ -19,7 +23,12 @@ type CfResponse = { success?: boolean; result?: { image?: string }; errors?: { c
  * Gera a imagem. `prompts` são variações do mesmo pedido: se o filtro de conteúdo da Cloudflare
  * (erro 3030, que às vezes barra pedidos inocentes) recusar uma, tenta a próxima.
  */
-export async function generateImage(prompts: string[], refs: Blob[], opts: { maxFlags?: number; cheapFirst?: boolean } = {}, size = { width: 768, height: 1024 }): Promise<GenResult> {
+export async function generateImage(
+  prompts: string[],
+  refs: Blob[],
+  opts: { maxFlags?: number; high?: boolean } = {},
+  size = { width: 768, height: 1024 },
+): Promise<GenResult> {
   const account = process.env.CF_ACCOUNT_ID;
   const token = process.env.CF_API_TOKEN;
   if (!account || !token) return { ok: false, status: 503, message: "A IA do manequim ainda não foi configurada no servidor." };
@@ -30,11 +39,12 @@ export async function generateImage(prompts: string[], refs: Blob[], opts: { max
   const prompt0 = prompts[0];
   // Para não gastar a cota do dia: só a primeira tentativa usa o modelo melhor (mais caro);
   // as repetições usam o modelo leve (cerca de 10x mais barato).
-  const best = MODELS[0];
-  const cheap = MODELS[MODELS.length - 1];
+  const best = MODELS.includes(HIGH) ? HIGH : MODELS[0];
+  const cheap = MODELS.includes(LIGHT) ? LIGHT : MODELS[MODELS.length - 1];
   const maxFlags = opts.maxFlags ?? 2;
+  let useHigh = Boolean(opts.high);
   const attempts = Array.from({ length: maxFlags + 2 }, (_, i) => ({
-    model: i === 0 && !opts.cheapFirst ? best : cheap,
+    model: i === 0 && useHigh ? best : cheap,
     prompt: prompts[i % prompts.length] ?? prompt0,
   }));
   let flagged = 0;
@@ -74,7 +84,12 @@ export async function generateImage(prompts: string[], refs: Blob[], opts: { max
     if (res.status === 401 || res.status === 403) {
       return { ok: false, status: 502, message: "A chave da Cloudflare foi recusada. Confira o CF_API_TOKEN e o CF_ACCOUNT_ID." };
     }
-    // Cota diária grátis esgotada: vale para todos os modelos da conta, então para aqui.
+    // Cota esgotada no modelo caro: tenta o leve antes de desistir.
+    if ((data?.errors?.[0]?.code === 3036 || /neuron|allocation/i.test(detail)) && model !== cheap && attempts.some((a) => a.model === cheap)) {
+      useHigh = false;
+      last = { ok: false, status: 429, message: "A cota grátis da IA acabou por enquanto. Ela volta em até 24 horas depois do uso." };
+      continue;
+    }
     if (data?.errors?.[0]?.code === 3036 || /neuron|allocation/i.test(detail)) {
       return { ok: false, status: 429, message: "A cota grátis da IA acabou por enquanto. Ela volta em até 24 horas depois do uso." };
     }

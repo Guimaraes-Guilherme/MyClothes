@@ -77,7 +77,9 @@ export const POST = authed(async (req, user) => {
   ];
 
   // Primeira rodada (fotos originais): 2 tentativas. Rodadas com fotos borradas: 3, já no modelo leve.
-  const r = await generateImage(prompts, refs, soft ? { maxFlags: 3, cheapFirst: true } : { maxFlags: 2 });
+  // Modelo leve por padrão; "alta qualidade" (high=1) tenta primeiro o modelo maior.
+  const high = form.get("high") === "1" && !soft;
+  const r = await generateImage(prompts, refs, { maxFlags: soft ? 3 : 2, high });
   if (!r.ok) return fail(r.status, r.message);
   return ok({ image: r.image });
 });
